@@ -1,0 +1,411 @@
+let's build a script that will scrape cars data from this site https://www.ultimatecarpage.com/ with the paginations:
+https://www.ultimatecarpage.com/search/&modified=2000,
+https://www.ultimatecarpage.com/search/&keys=&method=&carspagestart=30&modified=2000,
+https://www.ultimatecarpage.com/search/&keys=&method=&carspagestart=60&modified=2000,..
+https://www.ultimatecarpage.com/search/&keys=&method=&carspagestart=1980&modified=2000
+as each page has this parent container which houses cars links to thier data
+<div id=frame_main>
+    <table>
+        <tbody>
+            <tr>
+                <td class=light>
+                    <table>...</table> //this first table is not needed but the next 15 tables below
+                    //each table below has two separete car data so meaning 30 cars in 15 tables per page
+                    <table cellpadding="0" cellspacing="0" border="0"
+                        style="width:100%;height:67px;padding-bottom:6px;">
+                        <tbody>
+                            <tr>
+                                <td style="width:465px;">
+                                    <table cellpadding="0" cellspacing="0" border="0" style="width:100%;height:67px;">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width:100px;">
+                                                    <a
+                                                        href="https://www.ultimatecarpage.com/car/8863/Ferrari-SC40.html"><img
+                                                            src="https://www.ultimatecarpage.com/images/thumbs/188517.jpg"
+                                                            width="100" height="67" border="0"></a>
+                                                </td>
+                                                <td style="width:20px;">&nbsp;</td>
+                                                <td style="vertical-align:top;">
+                                                    <table cellpadding="0" cellspacing="0" border="0"
+                                                        style="width:100%;height:100%px;">
+                                                        <tbody>
+                                                            <tr>
+                                                                <td style="text-align:left;">
+                                                                    <a
+                                                                        href="https://www.ultimatecarpage.com/car/8863/Ferrari-SC40.html">Ferrari
+                                                                        SC40</a>
+                                                                </td>
+                                                                <td style="text-align:left;width:140px;">
+
+                                                                    <span class="red">24</span>
+                                                                    <img src="https://www.ultimatecarpage.com/graphics/site/photo.gif"
+                                                                        alt="Number of shots">
+
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td class="dark" style="text-align:left;">
+                                                                    Produced in:</td>
+                                                                <td class="dark" style="text-align:left;">2025
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td class="dark" style="text-align:left;">
+                                                                    Last updated:
+                                                                </td>
+                                                                <td class="dark" style="text-align:left;">
+                                                                    10 / 20 / 2025
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </td>
+
+                                <td style="width:20px;">&nbsp;</td>
+
+                                <td style="width:465px;">
+                                    <table cellpadding="0" cellspacing="0" border="0" style="width:100%;height:67px;">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width:100px;">
+                                                    <a
+                                                        href="https://www.ultimatecarpage.com/car/8845/Audi-Concept-C.html"><img
+                                                            src="https://www.ultimatecarpage.com/images/thumbs/188575.jpg"
+                                                            width="100" height="67" border="0"></a>
+                                                </td>
+                                                <td style="width:20px;">&nbsp;</td>
+                                                <td style="vertical-align:top;">
+                                                    <table cellpadding="0" cellspacing="0" border="0"
+                                                        style="width:100%;height:100%px;">
+                                                        <tbody>
+                                                            <tr>
+                                                                <td style="text-align:left;">
+                                                                    <a
+                                                                        href="https://www.ultimatecarpage.com/car/8845/Audi-Concept-C.html">Audi
+                                                                        Concept C</a>
+                                                                </td>
+                                                                <td style="text-align:left;width:140px;">
+
+                                                                    <span class="red">34</span>
+                                                                    <img src="https://www.ultimatecarpage.com/graphics/site/photo.gif"
+                                                                        alt="Number of shots">
+
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td class="dark" style="text-align:left;">
+                                                                    Produced in:</td>
+                                                                <td class="dark" style="text-align:left;">2025
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td class="dark" style="text-align:left;">
+                                                                    Last updated:
+                                                                </td>
+                                                                <td class="dark" style="text-align:left;">
+                                                                    10 / 19 / 2025
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </td>
+
+                            </tr>
+                        </tbody>
+
+                    </table>
+                    ...
+                    <table>...</table> //this last table is not needed
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+each link form the cars data is like this: https://www.ultimatecarpage.com/car/8863/Ferrari-SC40.html
+so this is where you start bulding the data with the cars name/title, number of shots, produced in, last updated
+then use the link to scrape the cars data from the car page. This page has at least article, image gallery and
+speicfications but if any of these three are abaialble get the cars data including article from these elements:
+
+//car's data and image
+url link format for car's data: https://www.ultimatecarpage.com/car/***.html
+<table cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:auto;">
+    <tbody>
+        <tr>
+            <td style="width:300px" align="left">
+                <a
+                    href="https://www.ultimatecarpage.com/img/Ferrari-SC40-188517.html"><img
+                        src="https://www.ultimatecarpage.com/images/mediums/188517.jpg"
+                        title="Click here to open the Ferrari SC40 gallery"
+                        alt="Click here to open the Ferrari SC40 gallery" width="100%" maxheight="200px"
+                        style="border:0px; text-align:left;">
+                    </a>
+            </td>
+            <td>&nbsp;&nbsp;</td>
+            <td style="width:346px" align="left" valign="middle">
+                <div style="text-align:left;" class="dark">
+                    <table>
+                        <tbody>
+                            <tr>
+                                <td class="dark" style="width:110px;text-align:top;" valign="top">Country of origin:
+                                </td>
+                                <td class="dark"><b>Italy</b></td>
+                            </tr>
+                            <tr>
+                                <td class="dark" style="width:110px;" valign="top">Produced in:</td>
+                                <td class="dark"><b>2025</b></td>
+                            </tr>
+                            <tr>
+                                <td class="dark" style="width:110px;" valign="top">Numbers built:</td>
+                                <td class="dark"><b>1 (Limited)</b></td>
+                            </tr>
+
+
+
+                            <tr>
+                                <td class="dark" style="width:110px;" valign="top">Engine type:</td>
+                                <td class="dark"><b>Hybrid</b></td>
+                            </tr>
+                            <tr>
+                                <td class="dark" style="width:110px;text-align:top;" valign="top">Designed by:</td>
+                                <td class="dark"><b>Flavio Manzoni for Ferrari Styling Centre</b></td>
+                            </tr>
+
+
+                            <tr>
+                                <td class="dark">Source:</td>
+                                <td class="dark"><b>Company press release</b></td>
+                            </tr>
+                            <tr>
+                                <td class="dark" style="width:110px;" valign="top">Last updated:</td>
+                                <td class="dark"><b>October 20, 2025</b></td>
+                            </tr>
+                            <tr>
+                                <td class="dark" style="width:110px;text-align:top;" valign="top">Download:</td>
+                                <td class="dark">
+                                    <script language="javascript" type="text/javascript">function saveImages() {
+                                            var r = confirm("This is an exclusive feature for our premium subscribers. To learn more about our premium subscriptions click 'OK', to return to the article click 'Cancel'");
+                                            if (r == true) {
+                                                document.location.href = 'https://www.ultimatecarpage.com/subscriptions/';
+                                            }
+                                        }
+                                    </script>
+                                    <a href="javascript:saveImages();">All images</a>
+                                </td>
+                            </tr>
+
+                        </tbody>
+                    </table>
+                </div>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+//article
+<span id="intelliTxt">
+    ...
+</span>
+
+url link format for car's image gallery: https://www.ultimatecarpage.com/cg/8863/***.html
+and this the parent container selector
+document.querySelector("#frame_main > table:nth-child(5) > tbody > tr > td:nth-child(2) > table:nth-child(3) > tbody > tr > td")
+<span style="display:inline-block;width:151px;;align:centre;margin-right:0px">
+    <a href="https://www.ultimatecarpage.com/img/Ferrari-SC40-188517.html">
+    <img src="https://www.ultimatecarpage.com/images/thumbs/188517.jpg" title="Ferrari SC40" alt="Ferrari SC40" style="border:0px;width:auto;max-height:100px;max-width:150px;">
+    </a>
+</span>
+...
+
+then each of the href url leads to the image gallery page.
+the image of of each car gallery could be obtained from this format
+first of all each image has its id in the href url eg: https://www.ultimatecarpage.com/cg/8863/Ferrari-SC40-188517.html which is 8863 + the cars name with its image id; Ferrari-SC40-Ferrari-SC40-188516 
+so now the image urls are going to like: https://www.ultimatecarpage.com/images/car/8863/Ferrari-SC40-188517.jpg, https://www.ultimatecarpage.com/images/car/8863/Ferrari-SC40-188516.html
+
+Then comes the last yet important the speicfications section.
+url link format for car's specifications: https://www.ultimatecarpage.com/specifications/8863/***.html
+and this the parent container selector
+#frame_main > table:nth-child(5) > tbody > tr > td:nth-child(2)
+with several tables inside it. with table > tbody > tr > td each first table  td is the title of the specifications and the remaining ones have two td in a tr with key and value unless the tabe is empty and must be ignored
+to be capbale of scraping the right values use this as a reference:
+<table cellpadding="0" cellspacing="0" border="0" style="text-align:left;width:100%;">
+    <tbody><tr>
+        <td colspan="2" class="darkbg" id="specstop">Engine
+        
+        </td>
+        </tr>
+
+    <tr>
+        <td class="lightbg" id="specsleft">Configuration </td>
+        <td class="lightbg" id="specsright">
+        F163 120º V6
+        </td>
+    </tr>
+    
+<tr>
+    <td class="lightbg" id="specsleft">Location </td>
+    <td class="lightbg" id="specsright">
+    Mid, longitudinally  mounted
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Construction </td>
+    <td class="lightbg" id="specsright">
+aluminium alloy block and head
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Displacement </td>
+    <td class="lightbg" id="specsright">2,992 cc / 182.6 cu in</td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Bore / Stroke </td>
+    <td class="lightbg" id="specsright">
+88.0 mm (3.5 in) / 82.0 mm (3.2 in)
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Valvetrain </td>
+    <td class="lightbg" id="specsright">
+4 valves / cylinder, DOHC
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Camshaft </td>
+    <td class="lightbg" id="specsright">Chain driven
+
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Fuel feed </td>
+    <td class="lightbg" id="specsright">
+Direct Fuel Injection
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Aspiration </td>
+    <td class="lightbg" id="specsright">Twin Turbo</td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Power </td>
+    <td class="lightbg" id="specsright">653 bhp / 487 kW
+ @ 8,000 rpm
+    </td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">Red Line </td>
+    <td class="lightbg" id="specsright">8,500 rpm</td>
+</tr>
+
+<tr>
+    <td class="lightbg" id="specsleft">BHP/Liter</td>
+    <td class="lightbg" id="specsright">218 bhp / liter</td>
+</tr>
+
+</tbody></table>
+
+so at the end of it all each scraped should be in this format:
+[
+        {
+            "id": "8863",
+            "name": "Ferrari SC40",
+            "slug": "Ferrari-SC40",
+            "number of shots": 24,
+            "produced in": 2025,
+            "last updated": "10 / 20 / 2025",
+            "data": {
+                "country of origin": "Italy",
+                "produced in": 2025,
+                "numbers built": "1 (Limited)",
+                "engine type": "Hybrid",
+                "designed by": "Flavio Manzoni for Ferrari Styling Centre",
+                "source": "Company press release",
+                "last updated": "10 / 20 / 2025",
+                "article": "...",
+            },
+            "imgs": ["188517", "188516",...],
+            "specs": [
+                    {"spec": "engine", "value": [
+                        "type": "Hybrid",
+                        "capacity": "1000 cc",
+                        "power": "1000 hp",
+                        "torque": "1000 Nm",
+                        "transmission": "Automatic",
+                        "fuel type": "Petrol",
+                        "fuel consumption": "1000 km/l",
+                        "fuel efficiency": "1000 km/l",
+                        "fuel efficiency": "1000 km/l",
+                        //...everything else that is available in the specifications table
+                    ]},
+                    {"spec": "dimensions", "value": [
+                        "length": "1000 mm",
+                        "width": "1000 mm",
+                        "height": "1000 mm",
+                        "wheelbase": "1000 mm",
+                        "tread": "1000 mm",
+                        "track": "1000 mm",
+                        "ground clearance": "1000 mm",
+                    ]},
+                    {"spec": "weight", "value": [
+                        "dry weight": "1000 kg",
+                        "gross weight": "1000 kg",
+                        "fuel capacity": "1000 L",
+                        "fuel consumption": "1000 km/l",
+                        "fuel efficiency": "1000 km/l",
+                        "fuel efficiency": "1000 km/l",
+                    ]},
+                    {"spec": "performance", "value": [
+                        "0-100 km/h": "1000 km/h",
+                        "0-200 km/h": "1000 km/h",
+                        "0-300 km/h": "1000 km/h",
+                        "0-400 km/h": "1000 km/h",
+                        "0-500 km/h": "1000 km/h",
+                        "0-600 km/h": "1000 km/h",
+                    ]},
+                    {"spec": "braking", "value": [
+                        "0-100 km/h": "1000 km/h",
+                        "0-200 km/h": "1000 km/h",
+                        "0-300 km/h": "1000 km/h",
+                        "0-400 km/h": "1000 km/h",
+                        "0-500 km/h": "1000 km/h",
+                        "0-600 km/h": "1000 km/h",
+                    ]},
+                    {"spec": "handling", "value": [
+                        "0-100 km/h": "1000 km/h",
+                        "0-200 km/h": "1000 km/h",
+                        "0-300 km/h": "1000 km/h",
+                        "0-400 km/h": "1000 km/h",
+                        "0-500 km/h": "1000 km/h",
+                        "0-600 km/h": "1000 km/h",
+                    ]},
+                    {"spec": "safety", "value": [
+                        "0-100 km/h": "1000 km/h",
+                        "0-200 km/h": "1000 km/h",
+                        "0-300 km/h": "1000 km/h",
+                        "0-400 km/h": "1000 km/h",
+                        "0-500 km/h": "1000 km/h",
+                        "0-600 km/h": "1000 km/h",
+                    ]},
+                    //...everything else that is available in the specifications table
+                },
+            ]
+        }
+]

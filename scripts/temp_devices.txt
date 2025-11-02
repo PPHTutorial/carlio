@@ -1,0 +1,9 @@
+Found 4 connected devices:
+  SM A725F (mobile) • 192.168.100.33:5555 • android-arm64  • Android 14 (API 34)
+  Windows (desktop) • windows             • windows-x64    • Microsoft Windows [Version 10.0.22621.4317]
+  Chrome (web)      • chrome              • web-javascript • Google Chrome 141.0.7390.125
+  Edge (web)        • edge                • web-javascript • Microsoft Edge 140.0.3485.81
+
+Run "flutter emulators" to list and start any available device emulators.
+
+If you expected another device to be detected, please run "flutter doctor" to diagnose potential issues. You may also try increasing the time to wait for connected devices with the "--device-timeout" flag. Visit https://flutter.dev/setup/ for troubleshooting tips.
