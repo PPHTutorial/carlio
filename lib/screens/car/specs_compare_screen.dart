@@ -8,15 +8,20 @@ import '../../core/services/car_comparison_service.dart';
 import '../../core/services/share_service.dart';
 import '../../core/services/bookmarks_service.dart';
 import '../../core/services/saved_comparisons_service.dart';
+import '../../core/services/ad_service.dart';
+import '../../core/widgets/banner_ad_widget.dart';
+import '../../core/widgets/native_ad_widget.dart';
 
 class SpecsCompareScreen extends StatefulWidget {
   final List<CarData> allCars;
   final CarData? initialCar;
+  final List<CarData>? preSelectedCars; // Pre-select these cars
 
   const SpecsCompareScreen({
     super.key,
     required this.allCars,
     this.initialCar,
+    this.preSelectedCars,
   });
 
   @override
@@ -27,8 +32,14 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
   List<CarData> _selectedCars = [];
   CarComparisonResult? _comparisonResult;
   bool _isComparing = false;
+  bool _showCarSelection = true; // Control which view to show
+  bool _isComparisonSaved = false;
+  bool _areAllCarsBookmarked = false;
+  String? _savedComparisonId;
   final BookmarksService _bookmarksService = BookmarksService.instance;
   final ShareService _shareService = ShareService();
+  final AdService _adService = AdService.instance;
+  final SavedComparisonsService _savedComparisonsService = SavedComparisonsService.instance;
 
   @override
   void initState() {
@@ -36,22 +47,121 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
     _resetSelection();
   }
 
+  @override
+  void didUpdateWidget(SpecsCompareScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_comparisonResult != null) {
+      _checkComparisonStatus();
+    }
+  }
+
+  Future<void> _checkComparisonStatus() async {
+    if (_comparisonResult == null || _selectedCars.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _isComparisonSaved = false;
+          _areAllCarsBookmarked = false;
+          _savedComparisonId = null;
+        });
+      }
+      return;
+    }
+
+    // Check if comparison is saved
+    final savedComparisons = await _savedComparisonsService.getSavedComparisons();
+    final carIds = _selectedCars.map((car) => car.id).toList()..sort();
+    
+    bool isSaved = false;
+    String? savedId;
+    
+    try {
+      final savedComparison = savedComparisons.firstWhere(
+        (comp) {
+          final compCarIds = List<String>.from(comp.carIds)..sort();
+          return compCarIds.length == carIds.length &&
+              compCarIds.every((id) => carIds.contains(id)) &&
+              carIds.every((id) => compCarIds.contains(id));
+        },
+      );
+      savedId = savedComparison.id;
+      isSaved = true;
+    } catch (e) {
+      // Comparison not found - not saved
+      isSaved = false;
+      savedId = null;
+    }
+
+    // Check if all cars are bookmarked
+    bool allBookmarked = true;
+    for (var car in _selectedCars) {
+      final isBookmarked = await _bookmarksService.isBookmarked(car.id);
+      if (!isBookmarked) {
+        allBookmarked = false;
+        break;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isComparisonSaved = isSaved;
+        _areAllCarsBookmarked = allBookmarked;
+        _savedComparisonId = savedId;
+      });
+    }
+  }
+
   void _resetSelection() {
     setState(() {
       _selectedCars.clear();
       _comparisonResult = null;
       _isComparing = false;
-      if (widget.initialCar != null) {
+      _showCarSelection = true;
+      // If pre-selected cars provided, use them; otherwise use initial car
+      if (widget.preSelectedCars != null && widget.preSelectedCars!.isNotEmpty) {
+        _selectedCars = List.from(widget.preSelectedCars!);
+        // If we have 2+ cars, auto-run comparison
+        if (_selectedCars.length >= 2) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _performComparison();
+          });
+        }
+      } else if (widget.initialCar != null) {
         _selectedCars = [widget.initialCar!];
       }
     });
   }
 
-  void _runComparison() {
+  bool get _shouldShowCarSelection {
+    // Show car selection if:
+    // - Less than 2 cars selected, OR
+    // - No comparison result and less than 5 cars and user wants to add more
+    return _selectedCars.length < 2 ||
+        (_comparisonResult == null &&
+            _selectedCars.length < 5 &&
+            _showCarSelection);
+  }
+
+  void _runComparison() async {
+    if (_selectedCars.length < 2) return;
+
+    // Show interstitial ad before comparison
+    await _adService.showInterstitialAd(
+      onAdClosed: () {
+        _performComparison();
+      },
+      onError: (error) {
+        // Continue even if ad fails
+        _performComparison();
+      },
+    );
+  }
+
+  void _performComparison() {
     if (_selectedCars.length < 2) return;
 
     setState(() {
       _isComparing = true;
+      _showCarSelection = false; // Switch to comparison view
     });
 
     try {
@@ -60,6 +170,8 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
         _comparisonResult = result;
         _isComparing = false;
       });
+      // Check status after comparison
+      _checkComparisonStatus();
     } catch (e) {
       setState(() {
         _isComparing = false;
@@ -95,55 +207,102 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
       ),
       body: Column(
         children: [
+          // Top banner ad
+          BannerAdWidget(),
           // Selected cars chips (2-column grid)
           if (_selectedCars.isNotEmpty)
             Container(
               padding: Responsive.padding(context),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: Responsive.scaleWidth(context, 12),
-                  mainAxisSpacing: Responsive.scaleHeight(context, 12),
-                  childAspectRatio: 3.5,
-                ),
-                itemCount: _selectedCars.length,
-                itemBuilder: (context, index) {
-                  final car = _selectedCars[index];
-                  return Chip(
-                    label: Text(
-                      car.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: Responsive.fontSize(context, 12),
-                        fontWeight: FontWeight.w500,
-                      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: Responsive.scaleWidth(context, 4),
+                      mainAxisSpacing: Responsive.scaleHeight(context, 4),
+                      childAspectRatio: 3.5,
                     ),
+                    itemCount:  _selectedCars.length,
+                    itemBuilder: (context, index) {
+                      final car = _selectedCars[index];
+                  return Chip(
+                        label: Text(
+                          car.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: Responsive.fontSize(context, 12),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                     onDeleted: () {
                       setState(() {
                         _selectedCars.remove(car);
-                        // Reset comparison when removing cars
-                        _comparisonResult = null;
+                            // Reset comparison when removing cars
+                            _comparisonResult = null;
+                            _showCarSelection =
+                                true; // Show selection view when removing
                       });
                     },
-                    deleteIcon: const Icon(Icons.close, size: 16),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: Responsive.scaleWidth(context, 4),
-                      vertical: Responsive.scaleHeight(context, 2),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: Responsive.scaleWidth(context, 4),
+                          vertical: Responsive.scaleHeight(context, 2),
+                        ),
+                      );
+                    },
+                  ),
+                  // Add More Cars button (under the grid, when less than 5)
+                  if (_selectedCars.length < 5 && _selectedCars.length >= 2)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: Responsive.scaleHeight(context, 12),
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            // Show interstitial ad
+                            await _adService.showInterstitialAd(
+                              onAdClosed: () {
+                                setState(() {
+                                  _showCarSelection = true;
+                                });
+                              },
+                              onError: (error) {
+                                setState(() {
+                                  _showCarSelection = true;
+                                });
+                              },
+                            );
+                          },
+                          icon: Icon(Icons.add_circle_outline_rounded),
+                          label:
+                              Text('Add More Cars (${_selectedCars.length}/5)'),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: Responsive.scaleWidth(context, 24),
+                              vertical: Responsive.scaleHeight(context, 16),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  );
-                },
+                ],
               ),
             ),
           // Car selection list or comparison view
           Expanded(
-            child: _selectedCars.length < 2 || 
-                    (_comparisonResult == null && _selectedCars.length < 5)
+            child: _shouldShowCarSelection
                 ? _buildCarSelectionView(context, theme)
                 : _buildComparisonView(context, theme),
           ),
+          // Bottom banner ad
+          BannerAdWidget(),
         ],
       ),
     );
@@ -159,26 +318,33 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _selectedCars.isEmpty
+            _selectedCars.isEmpty
                     ? 'Select 2-5 cars to compare'
                     : _selectedCars.length == 1
                         ? 'Select 1-4 more cars to compare (${_selectedCars.length}/5)'
                         : 'Add more cars or start comparison (${_selectedCars.length}/5)',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
               ),
-              if (_selectedCars.length >= 2)
-                Padding(
-                  padding:
-                      EdgeInsets.only(top: Responsive.scaleHeight(context, 8)),
-                  child: Text(
-                    'You can compare up to 5 cars. Tap "Compare" button below or add more cars.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+              if (_selectedCars.length >= 2) ...[
+                SizedBox(height: Responsive.scaleHeight(context, 12)),
+                // Compare button in selection view
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _runComparison(),
+                    icon: Icon(Icons.compare_arrows_rounded),
+                    label: Text('Compare ${_selectedCars.length} Cars'),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Responsive.scaleWidth(context, 24),
+                        vertical: Responsive.scaleHeight(context, 16),
+                      ),
                     ),
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -213,9 +379,9 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
                         ),
                       )
                     : Text(
-                        car.data.countryOfOrigin ?? 'Unknown origin',
-                        style: theme.textTheme.bodySmall,
-                      ),
+                  car.data.countryOfOrigin ?? 'Unknown origin',
+                  style: theme.textTheme.bodySmall,
+                ),
                 trailing: car.specs.isNotEmpty
                     ? Icon(
                         Icons.verified_rounded,
@@ -224,12 +390,38 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
                       )
                     : null,
                 onTap: canSelect
-                    ? () {
+                    ? () async {
+                        // Show interstitial ad on car selection
+                        await _adService.showInterstitialAd(
+                          onAdClosed: () {
                         setState(() {
                           _selectedCars.add(car);
-                          // Reset comparison when adding new car
-                          _comparisonResult = null;
-                        });
+                              // Reset comparison when adding new car
+                              _comparisonResult = null;
+                              // If we reach 5 cars, auto-compare and switch to comparison view
+                              if (_selectedCars.length >= 5) {
+                                _showCarSelection = false;
+                                // Auto-run comparison when 5 cars are selected
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  _performComparison();
+                                });
+                              }
+                            });
+                          },
+                          onError: (error) {
+                            // Continue even if ad fails
+                            setState(() {
+                              _selectedCars.add(car);
+                              _comparisonResult = null;
+                              if (_selectedCars.length >= 5) {
+                                _showCarSelection = false;
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  _performComparison();
+                                });
+                              }
+                            });
+                          },
+                        );
                       }
                     : isSelected
                         ? () {
@@ -270,34 +462,37 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Show comparison button if not yet compared
+          // Show action buttons if not yet compared
           if (_comparisonResult == null)
             Padding(
               padding: Responsive.padding(context),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _runComparison,
-                      icon: Icon(Icons.compare_arrows_rounded),
-                      label: Text('Compare ${_selectedCars.length} Cars'),
-                      style: ElevatedButton.styleFrom(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: Responsive.scaleWidth(context, 24),
-                          vertical: Responsive.scaleHeight(context, 16),
+                  // Compare button (always visible when 2+ cars selected)
+                  if (_selectedCars.length >= 2)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _runComparison(),
+                        icon: Icon(Icons.compare_arrows_rounded),
+                        label: Text('Compare ${_selectedCars.length} Cars'),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: Responsive.scaleWidth(context, 24),
+                            vertical: Responsive.scaleHeight(context, 16),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  if (_selectedCars.length < 5)
+                  // Info text
+                  if (_selectedCars.length >= 2 && _selectedCars.length < 5)
                     Padding(
                       padding: EdgeInsets.only(
                           top: Responsive.scaleHeight(context, 8)),
                       child: Text(
                         'You can add ${5 - _selectedCars.length} more car${5 - _selectedCars.length > 1 ? 's' : ''} before comparing',
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                         textAlign: TextAlign.left,
@@ -310,6 +505,10 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
           if (_comparisonResult != null) _buildResultsHeader(context, theme),
           if (_comparisonResult != null)
             SizedBox(height: Responsive.scaleHeight(context, 24)),
+          // Native ad after winner card
+          if (_comparisonResult != null) NativeAdWidget(),
+          if (_comparisonResult != null)
+            SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Action buttons (share, save, bookmark, fullscreen)
           if (_comparisonResult != null) _buildActionButtons(context, theme),
           if (_comparisonResult != null)
@@ -317,6 +516,10 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
           // Category scores comparison
           if (_comparisonResult != null)
             _buildCategoryScoresComparison(context, theme),
+          if (_comparisonResult != null)
+            SizedBox(height: Responsive.scaleHeight(context, 24)),
+          // Second native ad after category scores
+          if (_comparisonResult != null) NativeAdWidget(),
           if (_comparisonResult != null)
             SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Header with car names
@@ -345,12 +548,12 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
           horizontal: Responsive.scaleWidth(context, 16),
           vertical: Responsive.scaleHeight(context, 12),
         ),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
           borderRadius:
               BorderRadius.circular(Responsive.scaleWidth(context, 12)),
-        ),
-        child: Row(
+      ),
+      child: Row(
           children: _selectedCars.asMap().entries.map((entry) {
             final index = entry.key;
             final car = entry.value;
@@ -364,18 +567,18 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
                 minWidth: Responsive.scaleWidth(context, 120),
                 maxWidth: Responsive.scaleWidth(context, 200),
               ),
-              child: Text(
-                car.name,
+            child: Text(
+              car.name,
                 style: theme.textTheme.bodyLarge?.copyWith(
                   fontWeight: FontWeight.w600,
                   fontSize: Responsive.fontSize(context, 14),
-                ),
+              ),
                 textAlign: TextAlign.left,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-              ),
-            );
-          }).toList(),
+            ),
+          );
+        }).toList(),
         ),
       ),
     );
@@ -459,34 +662,34 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
       child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: Responsive.scaleWidth(context, 16),
-          vertical: Responsive.scaleHeight(context, 12),
-        ),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: theme.colorScheme.outlineVariant.withOpacity(0.5),
-              width: 1,
-            ),
+      padding: EdgeInsets.symmetric(
+        horizontal: Responsive.scaleWidth(context, 16),
+        vertical: Responsive.scaleHeight(context, 12),
+      ),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+            width: 1,
           ),
         ),
-        child: Row(
+      ),
+      child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(
+        children: [
+          SizedBox(
               width: Responsive.scaleWidth(context, 120),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  label,
+            child: Text(
+              label,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w500,
                     fontSize: Responsive.fontSize(context, 12),
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                color: theme.colorScheme.onSurfaceVariant,
               ),
+            ),
+          ),
             ),
             SizedBox(width: Responsive.scaleWidth(context, 8)),
             ...values.asMap().entries.map((entry) {
@@ -502,19 +705,19 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
                   minWidth: Responsive.scaleWidth(context, 100),
                   maxWidth: Responsive.scaleWidth(context, 180),
                 ),
-                child: Text(
-                  value ?? 'N/A',
+                  child: Text(
+                    value ?? 'N/A',
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w600,
                     fontSize: Responsive.fontSize(context, 12),
-                  ),
+                    ),
                   textAlign: TextAlign.left,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                ),
-              );
+                  ),
+                );
             }),
-          ],
+        ],
         ),
       ),
     );
@@ -683,7 +886,8 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
           if (winnerImageUrl != null) ...[
             SizedBox(width: Responsive.scaleWidth(context, 16)),
             ClipRRect(
-              borderRadius: BorderRadius.circular(Responsive.scaleWidth(context, 12)),
+              borderRadius:
+                  BorderRadius.circular(Responsive.scaleWidth(context, 12)),
               child: Container(
                 width: Responsive.scaleWidth(context, 120),
                 height: Responsive.scaleHeight(context, 120),
@@ -735,21 +939,50 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
         ),
         ElevatedButton.icon(
           onPressed: () => _saveComparison(),
-          icon: Icon(Icons.save_rounded, size: 18),
-          label: Text('Save',
-              style: TextStyle(fontSize: Responsive.fontSize(context, 12))),
+          icon: Icon(
+            _isComparisonSaved ? Icons.save_rounded : Icons.save_outlined,
+            size: 18,
+            color: _isComparisonSaved
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface,
+          ),
+          label: Text(
+            _isComparisonSaved ? 'Saved' : 'Save',
+            style: TextStyle(
+              fontSize: Responsive.fontSize(context, 12),
+              color: _isComparisonSaved
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface,
+            ),
+          ),
           style: ElevatedButton.styleFrom(
             padding: EdgeInsets.symmetric(
               horizontal: Responsive.scaleWidth(context, 16),
               vertical: Responsive.scaleHeight(context, 10),
             ),
+            
           ),
         ),
         ElevatedButton.icon(
           onPressed: () => _bookmarkComparison(),
-          icon: Icon(Icons.bookmark_rounded, size: 18),
-          label: Text('Bookmark',
-              style: TextStyle(fontSize: Responsive.fontSize(context, 12))),
+          icon: Icon(
+            _areAllCarsBookmarked
+                ? Icons.bookmark_rounded
+                : Icons.bookmark_outline_rounded,
+            size: 18,
+            color: _areAllCarsBookmarked
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface,
+          ),
+          label: Text(
+            _areAllCarsBookmarked ? 'Bookmarked' : 'Bookmark',
+            style: TextStyle(
+              fontSize: Responsive.fontSize(context, 12),
+              color: _areAllCarsBookmarked
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface,
+            ),
+          ),
           style: ElevatedButton.styleFrom(
             padding: EdgeInsets.symmetric(
               horizontal: Responsive.scaleWidth(context, 16),
@@ -764,58 +997,166 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
   Future<void> _shareComparison() async {
     if (_comparisonResult == null) return;
 
-    final buffer = StringBuffer();
-    buffer.writeln('🚗 Car Comparison Results\n');
-    buffer.writeln('🏆 Winner: ${_comparisonResult!.winner}\n');
-    buffer.writeln('Rankings:');
-    for (var car in _comparisonResult!.cars) {
-      buffer.writeln(
-          '${car.rank}. ${car.name} - ${car.finalScore.toStringAsFixed(1)}/10');
-    }
-    buffer.writeln('\n${_comparisonResult!.summary}');
-    buffer.writeln('\nGenerated by CarCollection App');
+    // Show rewarded video ad before sharing
+    await _adService.showRewardedInterstitialAd(
+      onRewarded: () async {
+        final buffer = StringBuffer();
+        buffer.writeln('🚗 Car Comparison Results\n');
+        buffer.writeln('🏆 Winner: ${_comparisonResult!.winner}\n');
+        buffer.writeln('Rankings:');
+        for (var car in _comparisonResult!.cars) {
+          buffer.writeln(
+              '${car.rank}. ${car.name} - ${car.finalScore.toStringAsFixed(1)}/10');
+        }
+        buffer.writeln('\n${_comparisonResult!.summary}');
+        buffer.writeln('\nGenerated by CarCollection App');
 
-    await _shareService.shareText(buffer.toString(),
-        subject: 'Car Comparison Results');
+        await _shareService.shareText(buffer.toString(),
+            subject: 'Car Comparison Results');
+      },
+      onError: (error) async {
+        // Continue even if ad fails
+        final buffer = StringBuffer();
+        buffer.writeln('🚗 Car Comparison Results\n');
+        buffer.writeln('🏆 Winner: ${_comparisonResult!.winner}\n');
+        buffer.writeln('Rankings:');
+        for (var car in _comparisonResult!.cars) {
+          buffer.writeln(
+              '${car.rank}. ${car.name} - ${car.finalScore.toStringAsFixed(1)}/10');
+        }
+        buffer.writeln('\n${_comparisonResult!.summary}');
+        buffer.writeln('\nGenerated by CarCollection App');
+
+        await _shareService.shareText(buffer.toString(),
+            subject: 'Car Comparison Results');
+      },
+    );
   }
 
   Future<void> _saveComparison() async {
     if (_comparisonResult == null) return;
 
-    try {
-      final savedComparisonsService = SavedComparisonsService.instance;
-      await savedComparisonsService.saveComparison(
-        selectedCars: _selectedCars,
-        result: _comparisonResult!,
-      );
-
-      if (mounted) {
+    // If already saved, unsave it
+    if (_isComparisonSaved && _savedComparisonId != null) {
+      final deleted = await _savedComparisonsService.deleteComparison(_savedComparisonId!);
+      if (mounted && deleted) {
+        setState(() {
+          _isComparisonSaved = false;
+          _savedComparisonId = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Comparison saved for future reference')),
+          SnackBar(content: Text('Comparison removed from saved')),
         );
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving comparison: $e')),
-        );
-      }
+      return;
     }
+
+    // Show interstitial ad before saving
+    await _adService.showInterstitialAd(
+      onAdClosed: () async {
+        try {
+          final savedId = await _savedComparisonsService.saveComparison(
+            selectedCars: _selectedCars,
+            result: _comparisonResult!,
+          );
+
+          if (mounted) {
+            setState(() {
+              _isComparisonSaved = true;
+              _savedComparisonId = savedId;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Comparison saved for future reference')),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error saving comparison: $e')),
+            );
+          }
+        }
+      },
+      onError: (error) async {
+        // Continue even if ad fails
+        try {
+          final savedId = await _savedComparisonsService.saveComparison(
+            selectedCars: _selectedCars,
+            result: _comparisonResult!,
+          );
+
+          if (mounted) {
+            setState(() {
+              _isComparisonSaved = true;
+              _savedComparisonId = savedId;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Comparison saved for future reference')),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error saving comparison: $e')),
+            );
+          }
+        }
+      },
+    );
   }
 
   Future<void> _bookmarkComparison() async {
     if (_comparisonResult == null) return;
 
-    // Bookmark each car
-    for (var car in _selectedCars) {
-      await _bookmarksService.addBookmark(car.id);
+    // If all bookmarked, unbookmark all
+    if (_areAllCarsBookmarked) {
+      for (var car in _selectedCars) {
+        await _bookmarksService.removeBookmark(car.id);
+      }
+      if (mounted) {
+        setState(() {
+          _areAllCarsBookmarked = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Comparison unbookmarked')),
+        );
+      }
+      return;
     }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Comparison bookmarked')),
-      );
-    }
+    // Show interstitial ad before bookmarking
+    await _adService.showInterstitialAd(
+      onAdClosed: () async {
+        // Bookmark each car
+        for (var car in _selectedCars) {
+          await _bookmarksService.addBookmark(car.id);
+        }
+
+        if (mounted) {
+          setState(() {
+            _areAllCarsBookmarked = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Comparison bookmarked')),
+          );
+        }
+      },
+      onError: (error) async {
+        // Continue even if ad fails
+        for (var car in _selectedCars) {
+          await _bookmarksService.addBookmark(car.id);
+        }
+
+        if (mounted) {
+          setState(() {
+            _areAllCarsBookmarked = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Comparison bookmarked')),
+          );
+        }
+      },
+    );
   }
 
   Widget _buildCategoryScoresComparison(BuildContext context, ThemeData theme) {
@@ -850,7 +1191,18 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
               ),
               if (_selectedCars.length > 2)
                 ElevatedButton.icon(
-                  onPressed: () => _showFullscreenComparison(context),
+                  onPressed: () async {
+                    // Show rewarded video ad before fullscreen
+                    await _adService.showRewardedAd(
+                      onRewarded: () {
+                        _showFullscreenComparison(context);
+                      },
+                      onError: (error) {
+                        // Continue even if ad fails
+                        _showFullscreenComparison(context);
+                      },
+                    );
+                  },
                   icon: Icon(Icons.fullscreen_rounded, size: 18),
                   label: Text('Fullscreen',
                       style: TextStyle(

@@ -348,7 +348,7 @@ class PremiumImageService {
       }
       
       // Calculate watermark size (60% of image width, maintaining aspect ratio)
-      final double targetWidth = image.width * 0.4;
+      final double targetWidth = image.width * 0.2;
       final double scaleFactor = targetWidth / watermark.width;
       final int watermarkWidth = targetWidth.round();
       final int watermarkHeight = (watermark.height * scaleFactor).round();

@@ -1017,12 +1017,12 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
 
     return Container(
       margin: EdgeInsets.symmetric(
-        vertical: Responsive.scaleHeight(context, 8),
+        vertical: Responsive.scaleHeight(context, 1),
       ),
       padding: padding,
       child: Wrap(
         spacing: Responsive.scaleWidth(context, 12),
-        runSpacing: Responsive.scaleHeight(context, 12),
+        runSpacing: Responsive.scaleHeight(context, 6),
         alignment: WrapAlignment.center,
         children: [
           ElevatedButton.icon(
@@ -1206,7 +1206,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
         style: ElevatedButton.styleFrom(
           padding: EdgeInsets.symmetric(
             horizontal: Responsive.scaleWidth(context, 24),
-            vertical: Responsive.scaleHeight(context, 16),
+            vertical: Responsive.scaleHeight(context, 0),
           ),
           shape: RoundedRectangleBorder(
             borderRadius:

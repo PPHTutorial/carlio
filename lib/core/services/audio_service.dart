@@ -8,6 +8,8 @@ class AudioService {
   String? _currentAsset;
   StreamSubscription<PlayerState>? _stateSubscription;
   bool _initialized = false;
+  Timer? _durationTimer; // Timer to limit playback duration to 20 seconds
+  static const Duration _maxPlaybackDuration = Duration(seconds: 20);
 
   AudioService() {
     _initializePlayer();
@@ -16,10 +18,12 @@ class AudioService {
   Future<void> _initializePlayer() async {
     if (_initialized) return;
     try {
-      // Set player mode to lowLatency for better asset playback
+      // Set player mode to lowLatency for better asset playback (works for both .mp3 and .aac)
       await _player.setPlayerMode(PlayerMode.lowLatency);
+      // Set release mode to stop for better control
+      await _player.setReleaseMode(ReleaseMode.stop);
       _initialized = true;
-      print('AudioService: Player initialized with lowLatency mode');
+      print('AudioService: Player initialized with lowLatency mode for .mp3 and .aac files');
     } catch (e) {
       print('AudioService: Error initializing player: $e');
     }
@@ -35,6 +39,7 @@ class AudioService {
     // Ensure player is initialized
     await _initializePlayer();
 
+    String? cleanPath;
     try {
       if (_isPlaying && _currentAsset == assetPath) {
         await stop();
@@ -49,9 +54,20 @@ class AudioService {
 
       // Play from asset - AssetSource expects path without 'assets/' prefix
       // Input: "assets/engine/carlio_001.mp3" -> Output: "engine/carlio_001.mp3"
-      String cleanPath = assetPath;
+      cleanPath = assetPath;
       if (assetPath.startsWith('assets/')) {
         cleanPath = assetPath.substring(7); // Remove 'assets/' (7 chars)
+      } else if (!assetPath.startsWith('assets/') && !assetPath.contains('/')) {
+        // If path doesn't start with assets/ and has no slash, it might already be clean
+        // But we should ensure it has the engine/ prefix if needed
+        if (!cleanPath.startsWith('engine/')) {
+          cleanPath = 'engine/$cleanPath';
+        }
+      }
+      
+      // Ensure path doesn't have leading slash
+      if (cleanPath.startsWith('/')) {
+        cleanPath = cleanPath.substring(1);
       }
       
       print('AudioService: Original path: $assetPath');
@@ -67,13 +83,21 @@ class AudioService {
         if (state == PlayerState.completed || state == PlayerState.stopped) {
           _isPlaying = false;
           _currentAsset = null;
+          _cancelDurationTimer(); // Cancel timer when playback completes naturally
         }
       });
 
       // Set volume to ensure audio plays
       await _player.setVolume(1.0);
       
-      // Play the asset
+      // Check file extension to determine if we need special handling
+      final isAac = cleanPath.toLowerCase().endsWith('.aac');
+      final isMp3 = cleanPath.toLowerCase().endsWith('.mp3');
+      
+      print('AudioService: File type - isAac: $isAac, isMp3: $isMp3');
+      
+      // Play the asset - AssetSource handles both .mp3 and .aac automatically
+      // Use AssetSource with the clean path (relative to assets root)
       await _player.play(AssetSource(cleanPath));
       _isPlaying = true;
       _currentAsset = assetPath;
@@ -83,12 +107,32 @@ class AudioService {
       // Verify playback started
       final state = _player.state;
       print('AudioService: Player state after play: $state');
+      
+      // Wait a moment and check if actually playing
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (_player.state == PlayerState.playing) {
+        print('AudioService: Confirmed - audio is playing');
+        
+        // Start duration timer to stop playback after 20 seconds
+        _cancelDurationTimer();
+        _durationTimer = Timer(_maxPlaybackDuration, () {
+          print('AudioService: Max duration (20s) reached, stopping playback');
+          stop();
+        });
+      } else {
+        print('AudioService: Warning - player state is ${_player.state}, expected playing');
+        // Don't throw - just log the warning, playback might still work
+      }
     } catch (e, stackTrace) {
       print('Error playing audio from asset: $e');
       print('Stack trace: $stackTrace');
+      print('AudioService: Asset path attempted: $assetPath');
+      print('AudioService: Clean path attempted: ${cleanPath ?? "N/A"}');
       _isPlaying = false;
       _currentAsset = null;
+      _cancelDurationTimer(); // Cancel timer on error
       await _stateSubscription?.cancel();
+      // Don't rethrow - let the caller know via the error message
     }
   }
 
@@ -114,17 +158,27 @@ class AudioService {
         if (state == PlayerState.completed) {
           _isPlaying = false;
           _currentUrl = null;
+          _cancelDurationTimer();
         }
+      });
+      
+      // Start duration timer to stop playback after 20 seconds
+      _cancelDurationTimer();
+      _durationTimer = Timer(_maxPlaybackDuration, () {
+        print('AudioService: Max duration (20s) reached, stopping playback');
+        stop();
       });
     } catch (e) {
       print('Error playing audio: $e');
       _isPlaying = false;
       _currentUrl = null;
+      _cancelDurationTimer(); // Cancel timer on error
     }
   }
 
   Future<void> stop() async {
     try {
+      _cancelDurationTimer(); // Cancel timer when stopping manually
       await _player.stop();
       _isPlaying = false;
       _currentUrl = null;
@@ -135,6 +189,12 @@ class AudioService {
       print('Error stopping audio: $e');
     }
   }
+  
+  /// Cancel the duration timer if it's active
+  void _cancelDurationTimer() {
+    _durationTimer?.cancel();
+    _durationTimer = null;
+  }
 
   bool get isPlaying => _isPlaying;
   String? get currentUrl => _currentUrl;
@@ -142,6 +202,7 @@ class AudioService {
   AudioPlayer get player => _player;
 
   void dispose() {
+    _cancelDurationTimer();
     _stateSubscription?.cancel();
     _player.dispose();
   }

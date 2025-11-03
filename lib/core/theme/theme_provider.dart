@@ -4,7 +4,7 @@ import 'app_theme.dart';
 
 class ThemeProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
-  bool _isDark = false;
+  bool _isDark = true;
 
   ThemeMode get themeMode => _themeMode;
   bool get isDark => _isDark;

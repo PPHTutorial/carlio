@@ -7,6 +7,8 @@ import '../../core/services/app_rating_service.dart';
 import '../../core/widgets/banner_ad_widget.dart';
 import '../auth/login_screen.dart';
 import '../premium/premium_screen.dart';
+import '../bookmarks/bookmarked_cars_screen.dart';
+import '../saved_comparisons/saved_comparisons_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -119,6 +121,42 @@ class AccountScreen extends StatelessWidget {
                       // Premium Section
                       if (userData != null && !userData.hasValidSubscription)
                         _buildPremiumSection(context, theme),
+                      
+                      // My Collections Section
+                      _buildSectionTitle(context, theme, 'My Collections'),
+                      SizedBox(height: Responsive.scaleHeight(context, 12)),
+                      _buildMenuItem(
+                        context,
+                        theme,
+                        icon: Icons.bookmark_rounded,
+                        title: 'Bookmarked Cars',
+                        subtitle: 'View your saved cars',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const BookmarkedCarsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      SizedBox(height: Responsive.scaleHeight(context, 8)),
+                      _buildMenuItem(
+                        context,
+                        theme,
+                        icon: Icons.compare_arrows_rounded,
+                        title: 'Saved Comparisons',
+                        subtitle: 'View your saved comparisons',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SavedComparisonsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      SizedBox(height: Responsive.scaleHeight(context, 24)),
                       
                       // Settings Section
                       _buildSectionTitle(context, theme, 'Settings'),

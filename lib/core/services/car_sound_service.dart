@@ -8,9 +8,10 @@ class CarSoundService {
 
   static const String _soundAssignmentsKey = 'car_sound_assignments';
 
-  // List of available sound files (renamed to carlio_[id].mp3 format)
-  // Update this list when you rename the files
+  // List of available sound files (both .mp3 and .aac formats)
+  // Total: 22 .mp3 files + 3 .aac files = 25 sound files
   static final List<String> _availableSounds = [
+    // MP3 files (001-022)
     'assets/engine/carlio_001.mp3',
     'assets/engine/carlio_002.mp3',
     'assets/engine/carlio_003.mp3',
@@ -33,6 +34,10 @@ class CarSoundService {
     'assets/engine/carlio_020.mp3',
     'assets/engine/carlio_021.mp3',
     'assets/engine/carlio_022.mp3',
+    // AAC files (0023-0025) - note: these have 4-digit numbers
+    'assets/engine/carlio_0023.aac',
+    'assets/engine/carlio_0024.aac',
+    'assets/engine/carlio_0025.aac',
   ];
 
   /// Get or assign a sound file for a specific car
@@ -55,9 +60,11 @@ class CarSoundService {
         final assignedSound = assignments[carId]!;
         // Verify the sound file still exists in available sounds
         if (_availableSounds.contains(assignedSound)) {
+          print('CarSoundService: Using existing assignment for $carId: $assignedSound');
           return assignedSound;
         } else {
           // Sound file no longer exists, reassign
+          print('CarSoundService: Sound file no longer exists, reassigning for $carId');
           assignments.remove(carId);
         }
       }
@@ -81,6 +88,7 @@ class CarSoundService {
       assignments[carId] = selectedSound;
       await _saveAssignments(prefs, assignments);
       
+      print('CarSoundService: Assigned sound to $carId: $selectedSound');
       return selectedSound;
     } catch (e) {
       print('Error getting/assigning sound: $e');
