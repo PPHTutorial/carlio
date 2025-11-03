@@ -9,7 +9,13 @@ class AudioService {
   StreamSubscription<PlayerState>? _stateSubscription;
   bool _initialized = false;
   Timer? _durationTimer; // Timer to limit playback duration to 20 seconds
-  static const Duration _maxPlaybackDuration = Duration(seconds: 20);
+  static const Duration _maxPlaybackDuration = Duration(seconds: 10);
+  
+  // Stream controller to notify listeners when playback stops
+  final StreamController<bool> _playbackStateController = StreamController<bool>.broadcast();
+  
+  /// Stream that emits true when playback starts, false when it stops
+  Stream<bool> get playbackStateStream => _playbackStateController.stream;
 
   AudioService() {
     _initializePlayer();
@@ -84,6 +90,8 @@ class AudioService {
           _isPlaying = false;
           _currentAsset = null;
           _cancelDurationTimer(); // Cancel timer when playback completes naturally
+          // Notify listeners that playback stopped
+          _playbackStateController.add(false);
         }
       });
 
@@ -101,6 +109,9 @@ class AudioService {
       await _player.play(AssetSource(cleanPath));
       _isPlaying = true;
       _currentAsset = assetPath;
+      
+      // Notify listeners that playback started
+      _playbackStateController.add(true);
       
       print('AudioService: Successfully started playing: $cleanPath');
       
@@ -153,12 +164,17 @@ class AudioService {
       await _player.play(UrlSource(audioUrl));
       _isPlaying = true;
       _currentUrl = audioUrl;
+      
+      // Notify listeners that playback started
+      _playbackStateController.add(true);
 
       _player.onPlayerStateChanged.listen((state) {
-        if (state == PlayerState.completed) {
+        if (state == PlayerState.completed || state == PlayerState.stopped) {
           _isPlaying = false;
           _currentUrl = null;
           _cancelDurationTimer();
+          // Notify listeners that playback stopped
+          _playbackStateController.add(false);
         }
       });
       
@@ -185,6 +201,8 @@ class AudioService {
       _currentAsset = null;
       await _stateSubscription?.cancel();
       _stateSubscription = null;
+      // Notify listeners that playback stopped
+      _playbackStateController.add(false);
     } catch (e) {
       print('Error stopping audio: $e');
     }
@@ -204,6 +222,7 @@ class AudioService {
   void dispose() {
     _cancelDurationTimer();
     _stateSubscription?.cancel();
+    _playbackStateController.close();
     _player.dispose();
   }
 }

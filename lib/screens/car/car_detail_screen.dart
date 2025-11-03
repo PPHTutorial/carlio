@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'dart:async';
 import '../../core/utils/responsive.dart';
 import '../../core/utils/image_utils.dart';
 import '../../core/widgets/watermarked_image.dart';
@@ -47,6 +48,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
   final BookmarksService _bookmarksService = BookmarksService.instance;
   final CarSoundService _carSoundService = CarSoundService();
   final CarService _carService = CarService();
+  StreamSubscription<bool>? _audioStateSubscription;
 
   @override
   void initState() {
@@ -55,6 +57,14 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
     _loadBookmarkStatus();
     // Show app open ad on detail screen
     _showAppOpenAd();
+    // Listen to audio playback state changes
+    _audioStateSubscription = _audioService.playbackStateStream.listen((isPlaying) {
+      if (mounted) {
+        setState(() {
+          _isPlayingSound = isPlaying;
+        });
+      }
+    });
   }
 
   Future<void> _showAppOpenAd() async {
@@ -66,6 +76,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
 
   @override
   void dispose() {
+    _audioStateSubscription?.cancel();
     _audioService.dispose();
     super.dispose();
   }
@@ -179,23 +190,8 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
 
       if (soundAssetPath.isNotEmpty) {
         // Play sound from asset
+        // Note: State updates are handled via playbackStateStream listener
         await _audioService.playEngineSoundFromAsset(soundAssetPath);
-        
-        if (mounted) {
-          setState(() {
-            _isPlayingSound = true;
-          });
-        }
-
-        // Note: State listener is handled in AudioService
-        // We'll check the playing state periodically or use a timer
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && !_audioService.isPlaying) {
-            setState(() {
-              _isPlayingSound = false;
-            });
-          }
-        });
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1177,18 +1173,55 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                 ),
               if (_aiSummary != null) ...[
                 SizedBox(height: Responsive.scaleHeight(context, 16)),
-                Text(
-                  _aiSummary!,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.8,
-                    letterSpacing: 0.3,
-                  ),
-                ),
+                _buildStyledAISummary(context, theme, _aiSummary!),
               ],
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStyledAISummary(BuildContext context, ThemeData theme, String summary) {
+    // Split summary into sentences for color separation
+    final sentences = summary
+        .split(RegExp(r'[.!?]\s+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    // Define text colors for alternating sections
+    final textColors = [
+      theme.colorScheme.primary,
+      theme.colorScheme.secondary,
+      theme.colorScheme.tertiary,
+      theme.colorScheme.onSurface,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: sentences.asMap().entries.map((entry) {
+        final index = entry.key;
+        final sentence = entry.value;
+        final textColor = textColors[index % textColors.length];
+
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: Responsive.scaleHeight(context, 12),
+          ),
+          child: Text(
+            sentence.endsWith('.') || sentence.endsWith('!') || sentence.endsWith('?')
+                ? sentence
+                : '$sentence.',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              height: 1.8,
+              letterSpacing: 0.3,
+              color: textColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

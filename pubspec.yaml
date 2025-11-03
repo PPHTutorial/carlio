@@ -1,5 +1,6 @@
 name: carcollection
-description: A new Flutter project.
+description: >
+  Discover Carlio, the ultimate app for car enthusiasts—explore, compare, and bookmark your favorite vehicles, access beautiful high-res images, detailed specs, and AI-powered summaries. Your journey to the perfect car starts here!
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
