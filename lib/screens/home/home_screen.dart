@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/services/car_service.dart';
+import '../../core/services/ad_service.dart';
+import '../../core/services/user_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../models/car_data.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../garage/garage_screen.dart';
@@ -26,6 +29,33 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadCars();
+    // Show app open ad on home screen load
+    _showAppOpenAd();
+    // Fetch user data when screen loads (if user is signed in)
+    _fetchUserDataOnLoad();
+  }
+
+  /// Automatically fetch user data when home screen loads
+  /// This ensures user data is available after successful sign-in
+  Future<void> _fetchUserDataOnLoad() async {
+    final authService = AuthService();
+    if (authService.currentUser != null) {
+      // User is signed in, fetch user data
+      try {
+        await UserService.instance.getUserData();
+        print('HomeScreen: User data fetched automatically after sign-in');
+      } catch (e) {
+        print('HomeScreen: Error fetching user data: $e');
+      }
+    }
+  }
+
+  Future<void> _showAppOpenAd() async {
+    // Small delay to ensure screen is visible
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      AdService.instance.showAppOpenAd();
+    }
   }
 
   @override
@@ -261,23 +291,33 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          DashboardScreen(
-            key: ValueKey('dashboard_${_currentIndex == 0 ? DateTime.now().millisecondsSinceEpoch ~/ (1000 * 10) : 0}'),
-            cars: _cars,
-            onLoadMore: _loadMoreCars,
-            isLoadingMore: _isScraping,
+    return StreamBuilder<UserData?>(
+      // Listen to auth state changes and automatically fetch user data
+      stream: UserService.instance.currentUserData,
+      builder: (context, userDataSnapshot) {
+        // When user signs in, this stream will automatically update
+        // and trigger a rebuild with the new user data
+        
+        return Scaffold(
+          /* appBar: AppBar(
+            automaticallyImplyLeading: false,
+          ), */
+          body: IndexedStack(
+            index: _currentIndex,
+            children: [
+              DashboardScreen(
+                key: ValueKey('dashboard_${_currentIndex == 0 ? DateTime.now().millisecondsSinceEpoch ~/ (1000 * 10) : 0}'),
+                cars: _cars,
+                onLoadMore: _loadMoreCars,
+                isLoadingMore: _isScraping,
+              ),
+              GarageScreen(
+                cars: _cars,
+                onLoadMore: _loadMoreCars,
+                isLoadingMore: _isScraping,
+              ),
+            ],
           ),
-          GarageScreen(
-            cars: _cars,
-            onLoadMore: _loadMoreCars,
-            isLoadingMore: _isScraping,
-          ),
-        ],
-      ),
       bottomNavigationBar: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
           return Column(
@@ -357,62 +397,64 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      floatingActionButton: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) {
-          final theme = Theme.of(context);
-          return FloatingActionButton(
-            onPressed: () {
-              themeProvider.setThemeMode(
-                themeProvider.isDark ? ThemeMode.light : ThemeMode.dark,
-              );
-            },
-            elevation: 0,
-            highlightElevation: 0,
-            backgroundColor: Colors.transparent,
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: themeProvider.isDark
-                    ? theme.colorScheme.primaryContainer
-                    : theme.colorScheme.secondaryContainer,
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) {
-                  return RotationTransition(
-                    turns: Tween<double>(begin: 0.0, end: 0.5).animate(
-                      CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeInOut,
-                      ),
-                    ),
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeInOut,
-                        ),
-                      ),
-                      child: child,
-                    ),
+          floatingActionButton: Consumer<ThemeProvider>(
+            builder: (context, themeProvider, _) {
+              final theme = Theme.of(context);
+              return FloatingActionButton(
+                onPressed: () {
+                  themeProvider.setThemeMode(
+                    themeProvider.isDark ? ThemeMode.light : ThemeMode.dark,
                   );
                 },
-                child: Icon(
-                  themeProvider.isDark
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  key: ValueKey(themeProvider.isDark),
-                  color: theme.colorScheme.onPrimaryContainer,
-                  size: 28,
+                elevation: 0,
+                highlightElevation: 0,
+                backgroundColor: Colors.transparent,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: themeProvider.isDark
+                        ? theme.colorScheme.primaryContainer
+                        : theme.colorScheme.secondaryContainer,
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) {
+                      return RotationTransition(
+                        turns: Tween<double>(begin: 0.0, end: 0.5).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeInOut,
+                          ),
+                        ),
+                        child: ScaleTransition(
+                          scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+                            CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeInOut,
+                            ),
+                          ),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Icon(
+                      themeProvider.isDark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      key: ValueKey(themeProvider.isDark),
+                      color: theme.colorScheme.onPrimaryContainer,
+                      size: 28,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          );
-        },
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+              );
+            },
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        );
+      },
     );
   }
 

@@ -8,58 +8,10 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
-/// Widget that displays a network image with actual pixel-level cropping
-/// Cropped images are cached to avoid re-cropping on subsequent views
-class CroppedNetworkImage extends StatelessWidget {
-  final String imageUrl;
-  final double cropPercent;
-  final BoxFit fit;
-  final Widget? placeholder;
-  final Widget? errorWidget;
-
-  const CroppedNetworkImage({
-    super.key,
-    required this.imageUrl,
-    this.cropPercent = 0.05,
-    this.fit = BoxFit.cover,
-    this.placeholder,
-    this.errorWidget,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (cropPercent <= 0) {
-      // No cropping needed, use regular CachedNetworkImage
-      return CachedNetworkImage(
-        imageUrl: imageUrl,
-        fit: fit,
-        placeholder: (context, url) => placeholder ?? const SizedBox(),
-        errorWidget: (context, url, error) => errorWidget ?? const SizedBox(),
-      );
-    }
-
-    // Fetch, crop, and display the image
-    return FutureBuilder<Uint8List?>(
-      future: _loadAndCropImage(imageUrl, cropPercent),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return placeholder ?? const SizedBox();
-        }
-
-        if (snapshot.hasError || !snapshot.hasData) {
-          return errorWidget ?? const SizedBox();
-        }
-
-        return Image.memory(
-          snapshot.data!,
-          fit: fit,
-        );
-      },
-    );
-  }
-
+/// Helper class for loading and caching cropped images
+class CroppedImageCache {
   /// Generate a cache key for the cropped image based on URL and crop percent
-  String _getCacheKey(String url, double cropPercent) {
+  static String _getCacheKey(String url, double cropPercent) {
     final keyString = '${url}_cropped_${cropPercent.toStringAsFixed(2)}';
     final bytes = utf8.encode(keyString);
     final hash = sha256.convert(bytes);
@@ -67,7 +19,7 @@ class CroppedNetworkImage extends StatelessWidget {
   }
 
   /// Get the cache directory for cropped images
-  Future<Directory> _getCacheDirectory() async {
+  static Future<Directory> _getCacheDirectory() async {
     final cacheDir = await getTemporaryDirectory();
     final croppedCacheDir = Directory('${cacheDir.path}/cropped_images');
     if (!await croppedCacheDir.exists()) {
@@ -76,7 +28,8 @@ class CroppedNetworkImage extends StatelessWidget {
     return croppedCacheDir;
   }
 
-  Future<Uint8List?> _loadAndCropImage(String url, double cropPercent) async {
+  /// Load and crop image, returning the cropped bytes
+  static Future<Uint8List?> loadAndCropImage(String url, double cropPercent) async {
     try {
       // Generate cache key
       final cacheKey = _getCacheKey(url, cropPercent);
@@ -132,5 +85,75 @@ class CroppedNetworkImage extends StatelessWidget {
       // If cropping fails, return null to show error widget
       return null;
     }
+  }
+  
+  /// Preload cropped image for faster display
+  static Future<void> precacheImage(String url, double cropPercent) async {
+    try {
+      await loadAndCropImage(url, cropPercent);
+    } catch (e) {
+      // Ignore preload errors
+    }
+  }
+
+  /// Get an ImageProvider for the cropped image
+  static Future<ImageProvider?> getCroppedImageProvider(
+    String url,
+    double cropPercent,
+  ) async {
+    final bytes = await loadAndCropImage(url, cropPercent);
+    if (bytes == null) return null;
+    return MemoryImage(bytes);
+  }
+}
+
+/// Widget that displays a network image with actual pixel-level cropping
+/// Cropped images are cached to avoid re-cropping on subsequent views
+class CroppedNetworkImage extends StatelessWidget {
+  final String imageUrl;
+  final double cropPercent;
+  final BoxFit fit;
+  final Widget? placeholder;
+  final Widget? errorWidget;
+
+  const CroppedNetworkImage({
+    super.key,
+    required this.imageUrl,
+    this.cropPercent = 0.05,
+    this.fit = BoxFit.cover,
+    this.placeholder,
+    this.errorWidget,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (cropPercent <= 0) {
+      // No cropping needed, use regular CachedNetworkImage
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: fit,
+        placeholder: (context, url) => placeholder ?? const SizedBox(),
+        errorWidget: (context, url, error) => errorWidget ?? const SizedBox(),
+      );
+    }
+
+    // Fetch, crop, and display the image
+    return FutureBuilder<Uint8List?>(
+      future: CroppedImageCache.loadAndCropImage(imageUrl, cropPercent),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return placeholder ?? const SizedBox();
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          return errorWidget ?? const SizedBox();
+        }
+
+        return Image.memory(
+          snapshot.data!,
+          fit: fit,
+        );
+      },
+    );
   }
 }

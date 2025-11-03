@@ -5,15 +5,28 @@ import 'package:carousel_slider/carousel_slider.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/utils/image_utils.dart';
 import '../../core/widgets/watermarked_image.dart';
+import '../../core/widgets/banner_ad_widget.dart';
+import '../../core/services/favorites_service.dart';
+import '../../core/services/bookmarks_service.dart';
+import '../../core/services/audio_service.dart';
+import '../../core/services/car_sound_service.dart';
+import '../../core/services/ai_service.dart';
+import '../../core/services/ar_service.dart';
+import '../../core/services/ad_service.dart';
+import '../../core/services/share_service.dart';
+import '../../core/services/car_service.dart';
 import '../../models/car_data.dart';
 import 'image_preview_screen.dart';
+import 'specs_compare_screen.dart';
 
 class CarDetailScreen extends StatefulWidget {
   final CarData car;
+  final List<CarData>? allCars;
 
   const CarDetailScreen({
     super.key,
     required this.car,
+    this.allCars,
   });
 
   @override
@@ -22,12 +35,259 @@ class CarDetailScreen extends StatefulWidget {
 
 class _CarDetailScreenState extends State<CarDetailScreen> {
   int _currentImageIndex = 0;
+  bool _isFavorite = false;
+  bool _isBookmarked = false;
+  bool _isLoadingFavorite = false;
+  bool _isLoadingBookmark = false;
+  bool _isPlayingSound = false;
+  bool _isGeneratingAISummary = false;
+  String? _aiSummary;
+  final AudioService _audioService = AudioService();
+  final FavoritesService _favoritesService = FavoritesService.instance;
+  final BookmarksService _bookmarksService = BookmarksService.instance;
+  final CarSoundService _carSoundService = CarSoundService();
+  final CarService _carService = CarService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavoriteStatus();
+    _loadBookmarkStatus();
+    // Show app open ad on detail screen
+    _showAppOpenAd();
+  }
+
+  Future<void> _showAppOpenAd() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      AdService.instance.showAppOpenAd();
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioService.dispose();
+    super.dispose();
+  }
+
+  /// Handle back navigation with optional interstitial ad
+  Future<void> _handleBackNavigation() async {
+    // Show interstitial ad when navigating back (only for free users)
+    final shouldShowAd = await AdService.instance.shouldShowAds();
+
+    if (shouldShowAd) {
+      await AdService.instance.showInterstitialAd(
+        onAdClosed: () {
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        },
+        onError: (error) {
+          // Navigate back even if ad fails
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        },
+      );
+    } else {
+      // Premium users navigate back immediately
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _loadFavoriteStatus() async {
+    final isFav = await _favoritesService.isFavorite(widget.car.id);
+    if (mounted) {
+      setState(() {
+        _isFavorite = isFav;
+      });
+    }
+  }
+
+  Future<void> _loadBookmarkStatus() async {
+    final isBookmarked = await _bookmarksService.isBookmarked(widget.car.id);
+    if (mounted) {
+      setState(() {
+        _isBookmarked = isBookmarked;
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    setState(() {
+      _isLoadingFavorite = true;
+    });
+
+    await _favoritesService.toggleFavorite(widget.car.id);
+    final isFav = await _favoritesService.isFavorite(widget.car.id);
+
+    if (mounted) {
+      setState(() {
+        _isFavorite = isFav;
+        _isLoadingFavorite = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text(isFav ? 'Added to favorites' : 'Removed from favorites'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleBookmark() async {
+    setState(() {
+      _isLoadingBookmark = true;
+    });
+
+    await _bookmarksService.toggleBookmark(widget.car.id);
+    final isBookmarked = await _bookmarksService.isBookmarked(widget.car.id);
+
+    if (mounted) {
+      setState(() {
+        _isBookmarked = isBookmarked;
+        _isLoadingBookmark = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isBookmarked
+              ? 'Article bookmarked'
+              : 'Article removed from bookmarks'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  Future<void> _playEngineSound() async {
+    if (_isPlayingSound) {
+      await _audioService.stop();
+      if (mounted) {
+        setState(() {
+          _isPlayingSound = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      // Get or assign sound for this car using CarSoundService
+      final soundAssetPath = await _carSoundService.getOrAssignSound(widget.car.id);
+
+      if (soundAssetPath.isNotEmpty) {
+        // Play sound from asset
+        await _audioService.playEngineSoundFromAsset(soundAssetPath);
+        
+        if (mounted) {
+          setState(() {
+            _isPlayingSound = true;
+          });
+        }
+
+        // Note: State listener is handled in AudioService
+        // We'll check the playing state periodically or use a timer
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && !_audioService.isPlaying) {
+            setState(() {
+              _isPlayingSound = false;
+            });
+          }
+        });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Engine sound not available for this car'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error playing engine sound: $e');
+      if (mounted) {
+        setState(() {
+          _isPlayingSound = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error playing engine sound: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _launchARView(BuildContext context) async {
+    try {
+      final imageUrls = widget.car.imgs.map((imgId) {
+        return ImageUtils.getCarLargeImageUrl(
+          widget.car.id,
+          widget.car.slug,
+          imgId,
+        );
+      }).toList();
+
+      await ARService.launchARView(
+        carModel: widget.car.id,
+        carName: widget.car.name,
+        imageUrls: imageUrls,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('AR not available: ${e.toString()}'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _generateAISummary() async {
+    if (_aiSummary != null) return;
+
+    setState(() {
+      _isGeneratingAISummary = true;
+    });
+
+    try {
+      final summary = await AIService.generateCarPersonalitySummary(
+        carName: widget.car.name,
+        engineType: widget.car.data.engineType,
+        producedIn: widget.car.producedIn > 0 ? widget.car.producedIn : null,
+        countryOfOrigin: widget.car.data.countryOfOrigin,
+        article: widget.car.data.article,
+      );
+
+      if (mounted) {
+        setState(() {
+          _aiSummary = summary;
+          _isGeneratingAISummary = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isGeneratingAISummary = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error generating AI summary'),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
@@ -39,13 +299,20 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                 //_buildBasicInfo(context, theme),
                 if (widget.car.specs.isNotEmpty)
                   _buildSpecificationsButton(context, theme),
+                _buildActionButtons(context, theme),
+                // Banner ad below action buttons and before details card
+                const BannerAdWidget(),
                 _buildDetails(context, theme),
                 if (widget.car.data.article != null &&
                     widget.car.data.article!.isNotEmpty)
-                  _buildArticle(context, theme),
-                if (widget.car.specs.isNotEmpty)
-                  _buildSpecificationsButton(context, theme),
-                SizedBox(height: Responsive.scaleHeight(context, 32)),
+                  _buildAISummary(context, theme),
+                if (widget.car.data.article != null &&
+                    widget.car.data.article!.isNotEmpty)
+                  //_buildArticle(context, theme),
+                  SizedBox(height: Responsive.scaleHeight(context, 16)),
+                // Banner ad at bottom (only for free users)
+                const BannerAdWidget(),
+                SizedBox(height: Responsive.scaleHeight(context, 16)),
               ],
             ),
           ),
@@ -55,7 +322,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
   }
 
   Widget _buildHeroSliderAppBar(BuildContext context, ThemeData theme) {
-    final heroHeight = Responsive.scaleHeight(context, 400) * 0.85;
+    final heroHeight = Responsive.scaleHeight(context, 400) * 0.75;
 
     if (widget.car.imgs.isEmpty) {
       return SliverAppBar(
@@ -72,7 +339,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
           ),
           child: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
+            onPressed: _handleBackNavigation,
           ),
         ),
         flexibleSpace: FlexibleSpaceBar(
@@ -87,23 +354,26 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                 ],
               ),
             ),
-            child: SafeArea(
-              child: Padding(
-                padding: Responsive.padding(context),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      widget.car.name,
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                      ),
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top,
+                left: Responsive.scaleWidth(context, 16),
+                right: Responsive.scaleWidth(context, 16),
+                bottom: Responsive.scaleHeight(context, 16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    widget.car.name,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -115,50 +385,14 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
       expandedHeight: heroHeight,
       pinned: true,
       elevation: 0,
+      toolbarHeight: 0, // Remove toolbar to flush hero to top (like dashboard)
       backgroundColor: Colors.transparent,
       systemOverlayStyle: SystemUiOverlayStyle.light,
-      leading: Container(
-        margin: EdgeInsets.all(Responsive.scaleWidth(context, 8)),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
-          shape: BoxShape.circle,
-        ),
-        child: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      actions: [
-        Container(
-          margin: EdgeInsets.all(Responsive.scaleWidth(context, 8)),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.5),
-            shape: BoxShape.circle,
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.share_rounded, color: Colors.white),
-            onPressed: () {},
-          ),
-        ),
-        Container(
-          margin: EdgeInsets.all(Responsive.scaleWidth(context, 8)),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.5),
-            shape: BoxShape.circle,
-          ),
-          child: IconButton(
-            icon:
-                const Icon(Icons.favorite_border_rounded, color: Colors.white),
-            onPressed: () {},
-          ),
-        ),
-        SizedBox(width: Responsive.scaleWidth(context, 8)),
-      ],
+
       flexibleSpace: FlexibleSpaceBar(
         background: Stack(
           fit: StackFit.expand,
           children: [
-            // Image carousel
             CarouselSlider.builder(
               itemCount: widget.car.imgs.length,
               itemBuilder: (context, index, realIndex) {
@@ -168,7 +402,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                   widget.car.imgs[index],
                 );
                 return GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     final imageUrls = widget.car.imgs.map((imgId) {
                       return ImageUtils.getCarLargeImageUrl(
                         widget.car.id,
@@ -176,23 +410,28 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                         imgId,
                       );
                     }).toList();
-                    
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ImagePreviewScreen(
-                          imageUrls: imageUrls,
-                          initialIndex: _currentImageIndex,
-                          carName: widget.car.name,
-                        ),
-                      ),
+
+                    // Show interstitial ad on image click (with frequency capping)
+                    await AdService.instance.showInterstitialAdOnImageClick(
+                      onAdClosed: () {
+                        // Navigate after ad is closed or skipped
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ImagePreviewScreen(
+                              imageUrls: imageUrls,
+                              initialIndex: _currentImageIndex,
+                              carName: widget.car.name,
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                   child: WatermarkedImage(
-                    image: ImageUtils.cropImageEdges(
-                      CachedNetworkImage(
-                        imageUrl: imageUrl,
-                        fit: BoxFit.cover,
+                    image: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
                       placeholder: (context, url) => Container(
                         width: double.infinity,
                         height: double.infinity,
@@ -214,18 +453,18 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                             end: Alignment.bottomRight,
                             colors: [
                               theme.colorScheme.primary.withOpacity(0.3),
-                              theme.colorScheme.primaryContainer.withOpacity(0.3),
+                              theme.colorScheme.primaryContainer
+                                  .withOpacity(0.3),
                             ],
                           ),
                         ),
                       ),
                     ),
                   ),
-                  ),
                 );
               },
               options: CarouselOptions(
-                height: heroHeight,
+                height: double.infinity,
                 viewportFraction: 1.0,
                 enlargeCenterPage: false,
                 autoPlay: widget.car.imgs.length > 1,
@@ -238,7 +477,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                 },
               ),
             ),
-            // Gradient overlay (ignoring pointer so taps pass through)
+
             IgnorePointer(
               child: Container(
                 decoration: BoxDecoration(
@@ -253,104 +492,231 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                 ),
               ),
             ),
+            // Navigation buttons positioned absolutely at top (like dashboard)
+            Positioned(
+              top: MediaQuery.of(context).padding.top,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Back button
+                  Container(
+                    margin: EdgeInsets.all(Responsive.scaleWidth(context, 8)),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: _handleBackNavigation,
+                    ),
+                  ),
+                  // Action buttons (share, favorite, bookmark)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        margin:
+                            EdgeInsets.all(Responsive.scaleWidth(context, 8)),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.share_rounded,
+                              color: Colors.white),
+                          onPressed: () async {
+                            await ShareService().shareCar(
+                              carName: widget.car.name,
+                              imageUrl: widget.car.imgs.isNotEmpty
+                                  ? ImageUtils.getCarLargeImageUrl(
+                                      widget.car.id,
+                                      widget.car.slug,
+                                      widget.car.imgs[0],
+                                    )
+                                  : null,
+                            );
+                          },
+                        ),
+                      ),
+                      Container(
+                        margin:
+                            EdgeInsets.all(Responsive.scaleWidth(context, 8)),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: _isLoadingFavorite
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : Icon(
+                                  _isFavorite
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                  color:
+                                      _isFavorite ? Colors.red : Colors.white,
+                                ),
+                          onPressed:
+                              _isLoadingFavorite ? null : _toggleFavorite,
+                        ),
+                      ),
+                      if (widget.car.data.article != null &&
+                          widget.car.data.article!.isNotEmpty)
+                        Container(
+                          margin:
+                              EdgeInsets.all(Responsive.scaleWidth(context, 8)),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: _isLoadingBookmark
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
+                                    ),
+                                  )
+                                : Icon(
+                                    _isBookmarked
+                                        ? Icons.bookmark_rounded
+                                        : Icons.bookmark_border_rounded,
+                                    color: _isBookmarked
+                                        ? Colors.amber
+                                        : Colors.white,
+                                  ),
+                            onPressed:
+                                _isLoadingBookmark ? null : _toggleBookmark,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             // Title and badges overlay (ignoring pointer so taps pass through)
             IgnorePointer(
-              child: SafeArea(
-                child: Padding(
-                  padding: Responsive.padding(context),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Image indicator at top
-                      if (widget.car.imgs.length > 1)
-                        Container(
-                          constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width - 
-                                (Responsive.padding(context).horizontal * 8),
-                          ),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: widget.car.imgs.length > 15 
-                                ? const BouncingScrollPhysics() 
-                                : const NeverScrollableScrollPhysics(),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: List.generate(
-                                widget.car.imgs.length,
-                                (index) => Container(
-                                  width: Responsive.scaleWidth(context, 
-                                      widget.car.imgs.length > 15 ? 6 : 8),
-                                  height: Responsive.scaleWidth(context, 
-                                      widget.car.imgs.length > 15 ? 6 : 8),
-                                  margin: EdgeInsets.symmetric(
-                                    horizontal: Responsive.scaleWidth(context, 
-                                        widget.car.imgs.length > 15 ? 2 : 4),
-                                  ),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: _currentImageIndex == index
-                                        ? Colors.white
-                                        : Colors.white.withOpacity(0.4),
-                                  ),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top +
+                      Responsive.scaleHeight(
+                          context, 56), // Account for button row
+                  left: Responsive.scaleWidth(context, 16),
+                  right: Responsive.scaleWidth(context, 16),
+                  bottom: Responsive.scaleHeight(context, 16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Image indicator at top
+                    if (widget.car.imgs.length > 1)
+                      Container(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width -
+                              (Responsive.padding(context).horizontal * 8),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: widget.car.imgs.length > 15
+                              ? const BouncingScrollPhysics()
+                              : const NeverScrollableScrollPhysics(),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: List.generate(
+                              widget.car.imgs.length,
+                              (index) => Container(
+                                width: Responsive.scaleWidth(context,
+                                    widget.car.imgs.length > 15 ? 6 : 8),
+                                height: Responsive.scaleWidth(context,
+                                    widget.car.imgs.length > 15 ? 6 : 8),
+                                margin: EdgeInsets.symmetric(
+                                  horizontal: Responsive.scaleWidth(context,
+                                      widget.car.imgs.length > 15 ? 2 : 4),
+                                ),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _currentImageIndex == index
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.4),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      // Title and badges at bottom
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.car.name,
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black.withOpacity(0.7),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: Responsive.scaleHeight(context, 12)),
-                          Wrap(
-                            spacing: Responsive.scaleWidth(context, 8),
-                            runSpacing: Responsive.scaleHeight(context, 8),
-                            children: [
-                              if (widget.car.data.countryOfOrigin != null)
-                                _buildHeroDetailBadge(
-                                  context,
-                                  theme,
-                                  Icons.place_rounded,
-                                  widget.car.data.countryOfOrigin!,
-                                ),
-                              if (widget.car.producedIn > 0)
-                                _buildHeroDetailBadge(
-                                  context,
-                                  theme,
-                                  Icons.calendar_today_rounded,
-                                  widget.car.producedIn.toString(),
-                                ),
-                              if (widget.car.numberOfShots > 0)
-                                _buildHeroDetailBadge(
-                                  context,
-                                  theme,
-                                  Icons.photo_library_rounded,
-                                  '${widget.car.numberOfShots} photos',
-                                ),
+                      ),
+                    // Title and badges at bottom
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                       // SizedBox(height: Responsive.scaleHeight(context, 80)),
+                        Text(
+                          widget.car.name,
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.7),
+                                blurRadius: 12,
+                                offset: const Offset(0, 2),
+                              ),
                             ],
                           ),
-                          SizedBox(height: Responsive.scaleHeight(context, 40)),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                        SizedBox(height: Responsive.scaleHeight(context, 12)),
+                        Wrap(
+                          spacing: Responsive.scaleWidth(context, 8),
+                          runSpacing: Responsive.scaleHeight(context, 8),
+                          children: [
+                            if (widget.car.data.countryOfOrigin != null)
+                              _buildHeroDetailBadge(
+                                context,
+                                theme,
+                                Icons.place_rounded,
+                                widget.car.data.countryOfOrigin!,
+                              ),
+                            if (widget.car.producedIn > 0)
+                              _buildHeroDetailBadge(
+                                context,
+                                theme,
+                                Icons.calendar_today_rounded,
+                                widget.car.producedIn.toString(),
+                              ),
+                            if (widget.car.data.engineType != null)
+                              _buildHeroDetailBadge(
+                                context,
+                                theme,
+                                Icons.bolt_rounded,
+                                widget.car.data.engineType!,
+                              ),
+                            if (widget.car.numberOfShots > 0)
+                              _buildHeroDetailBadge(
+                                context,
+                                theme,
+                                Icons.photo_library_rounded,
+                                '${widget.car.numberOfShots} photos',
+                              ),
+                          ],
+                        ),
+                        SizedBox(height: Responsive.scaleHeight(context, 20)),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -646,6 +1012,186 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
     );
   }
 
+  Widget _buildActionButtons(BuildContext context, ThemeData theme) {
+    final padding = Responsive.padding(context);
+
+    return Container(
+      margin: EdgeInsets.symmetric(
+        vertical: Responsive.scaleHeight(context, 8),
+      ),
+      padding: padding,
+      child: Wrap(
+        spacing: Responsive.scaleWidth(context, 12),
+        runSpacing: Responsive.scaleHeight(context, 12),
+        alignment: WrapAlignment.center,
+        children: [
+          ElevatedButton.icon(
+            onPressed: _playEngineSound,
+            icon: Icon(
+                _isPlayingSound ? Icons.stop_rounded : Icons.volume_up_rounded),
+            label: Text(_isPlayingSound ? 'Stop Sound' : 'Engine Sound'),
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(
+                horizontal: Responsive.scaleWidth(context, 20),
+                vertical: Responsive.scaleHeight(context, 12),
+              ),
+            ),
+          ),
+          FutureBuilder<bool>(
+            future: ARService.isARSupported(),
+            builder: (context, snapshot) {
+              if (snapshot.data == true) {
+                return ElevatedButton.icon(
+                  onPressed: () => _launchARView(context),
+                  icon: const Icon(Icons.view_in_ar_rounded),
+                  label: const Text('View in AR'),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.scaleWidth(context, 20),
+                      vertical: Responsive.scaleHeight(context, 12),
+                    ),
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          if (widget.car.specs.isNotEmpty)
+            ElevatedButton.icon(
+              onPressed: () => _showSpecificationsButton(context, theme),
+              icon: const Icon(Icons.compare_arrows_rounded),
+              label: const Text('Compare Specs'),
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal: Responsive.scaleWidth(context, 20),
+                  vertical: Responsive.scaleHeight(context, 12),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAISummary(BuildContext context, ThemeData theme) {
+    final padding = Responsive.padding(context);
+
+    return Container(
+      margin: EdgeInsets.symmetric(
+        vertical: Responsive.scaleHeight(context, 8),
+      ),
+      padding: padding,
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius:
+              BorderRadius.circular(Responsive.scaleWidth(context, 16)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(Responsive.scaleWidth(context, 16)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        color: theme.colorScheme.primary,
+                        size: Responsive.fontSize(context, 24),
+                      ),
+                      SizedBox(width: Responsive.scaleWidth(context, 8)),
+                      Text(
+                        'AI Personality Summary',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_aiSummary == null)
+                    IconButton(
+                      icon: _isGeneratingAISummary
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  theme.colorScheme.primary,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.refresh_rounded),
+                      onPressed:
+                          _isGeneratingAISummary ? null : _generateAISummary,
+                      tooltip: 'Generate AI Summary',
+                    ),
+                ],
+              ),
+              if (_aiSummary == null && !_isGeneratingAISummary)
+                Padding(
+                  padding:
+                      EdgeInsets.only(top: Responsive.scaleHeight(context, 16)),
+                  child: Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _generateAISummary,
+                      icon: const Icon(Icons.auto_awesome_rounded),
+                      label: const Text('Generate Summary'),
+                    ),
+                  ),
+                ),
+              if (_isGeneratingAISummary)
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    vertical: Responsive.scaleHeight(context, 32),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.colorScheme.primary,
+                          ),
+                        ),
+                        SizedBox(height: Responsive.scaleHeight(context, 16)),
+                        Text(
+                          'Generating AI summary...',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_aiSummary != null) ...[
+                SizedBox(height: Responsive.scaleHeight(context, 16)),
+                Text(
+                  _aiSummary!,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    height: 1.8,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSpecificationsButton(BuildContext context, ThemeData theme) {
     final padding = Responsive.padding(context);
 
@@ -669,6 +1215,42 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
         ),
       ),
     );
+  }
+
+  void _showSpecificationsButton(BuildContext context, ThemeData theme) async {
+    List<CarData> carsToCompare = widget.allCars ?? [];
+    
+    // If allCars not provided, try to load from cache
+    if (carsToCompare.isEmpty) {
+      try {
+        carsToCompare = await _carService.loadCars();
+      } catch (e) {
+        print('Error loading cars for comparison: $e');
+      }
+    }
+    
+    if (carsToCompare.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Car list not available for comparison. Please wait for cars to load.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SpecsCompareScreen(
+            allCars: carsToCompare,
+            initialCar: widget.car,
+          ),
+        ),
+      );
+    }
   }
 
   void _showSpecificationsBottomSheet(BuildContext context, ThemeData theme) {

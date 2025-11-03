@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "831093502721",
+    "project_id": "carlio-569a3",
+    "storage_bucket": "carlio-569a3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831093502721:android:c784a5c762a67416e92100",
+        "android_client_info": {
+          "package_name": "com.codeink.stsl.carcollection"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsfskUCR5W76qAbmEDaZM7T2v5GXWv4JU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

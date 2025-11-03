@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:carcollection/core/services/ad_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/utils/responsive.dart';
+import '../../core/widgets/banner_ad_widget.dart';
 import '../../models/car_data.dart';
 import '../car/car_detail_screen.dart';
 import '../car/car_list_screen.dart';
@@ -140,26 +142,32 @@ class _GarageScreenState extends State<GarageScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
+      return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        body: SafeArea(
-        child: Column(
+        body: Column(
           children: [
             _buildPremiumHeader(context, theme),
+            // Banner ad between search and filter
             _buildPremiumFilters(context, theme),
+            SizedBox(height: Responsive.scaleHeight(context, 16)),
+            const BannerAdWidget(),
             Expanded(
               child: _filteredCars.isEmpty
                   ? _buildEmptyState(context, theme)
                   : CarListScreen(
                       cars: _filteredCars,
-                      onCarTap: (car) {
+                      onCarTap: (car) async {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => CarDetailScreen(car: car),
                           ),
                         );
+                        // Show app open ad after navigation
+                        Future.delayed(const Duration(milliseconds: 500), () {
+                          AdService.instance.showAppOpenAd();
+                        });
                       },
                       onLoadMore: widget.onLoadMore,
                       isLoadingMore: widget.isLoadingMore,
@@ -168,19 +176,12 @@ class _GarageScreenState extends State<GarageScreen> {
           ],
         ),
       ),
-      ),
     );
   }
 
   Widget _buildPremiumHeader(BuildContext context, ThemeData theme) {
     final padding = Responsive.padding(context);
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        padding.left,
-        padding.top,
-        padding.right,
-        padding.bottom,
-      ),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         boxShadow: [
@@ -191,11 +192,18 @@ class _GarageScreenState extends State<GarageScreen> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          padding.left,
+          MediaQuery.of(context).padding.top,
+          padding.right,
+          padding.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +230,8 @@ class _GarageScreenState extends State<GarageScreen> {
           ),
           SizedBox(height: Responsive.scaleHeight(context, 16)),
           _buildPremiumSearchField(context, theme),
-        ],
+          ],
+        ),
       ),
     );
   }

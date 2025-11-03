@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:carcollection/core/widgets/banner_ad_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,8 +8,13 @@ import '../../core/utils/responsive.dart';
 import '../../core/utils/image_utils.dart';
 import '../../core/utils/constants.dart';
 import '../../core/widgets/watermarked_image.dart';
+import '../../core/widgets/native_ad_widget.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/user_service.dart';
 import '../../models/car_data.dart';
 import '../car/car_detail_screen.dart';
+import '../account/account_screen.dart';
+import '../../core/services/share_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final List<CarData> cars;
@@ -28,17 +34,20 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   List<CarData> _recentCars = [];
-  List<int> _recentCarIndexes = [];
   int _randomSeed = 0;
   int _heroCarIndex = 0;
   Timer? _heroCarTimer;
   List<CarData> _featuredCars = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isHeroVisible = true;
+  double _heroHeight = 380.0;
 
   @override
   void initState() {
     super.initState();
     _randomizeRecentCars();
     _initializeHeroCar();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
@@ -54,7 +63,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _heroCarTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!mounted || !_scrollController.hasClients) return;
+    
+    // Check if hero is scrolled away
+    // When SliverAppBar is collapsed, the offset equals expandedHeight - collapsedHeight
+    final collapsedHeight = kToolbarHeight;
+    final threshold = _heroHeight - collapsedHeight;
+    final isHeroScrolledAway = _scrollController.offset >= threshold;
+    
+    if (_isHeroVisible == isHeroScrolledAway) {
+      setState(() {
+        _isHeroVisible = !isHeroScrolledAway;
+      });
+    }
   }
 
   void _initializeHeroCar() {
@@ -95,7 +122,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (widget.cars.isEmpty) {
       setState(() {
         _recentCars = [];
-        _recentCarIndexes = [];
       });
       return;
     }
@@ -115,14 +141,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       availableCars.shuffle(random);
       final selectedCars = availableCars.take(8).toList();
       
-      // Track the original indexes/positions in the main cars list
-      final selectedIndexes = selectedCars.map((car) {
-        return widget.cars.indexWhere((c) => c.id == car.id);
-      }).where((index) => index != -1).toList();
-
       setState(() {
         _recentCars = selectedCars;
-        _recentCarIndexes = selectedIndexes;
         _randomSeed = seed;
       });
     }
@@ -148,11 +168,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? widget.cars.reversed.take(6).toList().reversed.toList()
         : List<CarData>.from(widget.cars.reversed);
 
-    return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          _buildHeroSection(context, theme, _featuredCars),
+    // Update hero height for scroll detection
+    _heroHeight = Responsive.scaleHeight(context, 380);
+
+    // Determine status bar style based on hero visibility
+    final statusBarStyle = _isHeroVisible 
+        ? SystemUiOverlayStyle.light 
+        : (Theme.of(context).brightness == Brightness.dark 
+            ? SystemUiOverlayStyle.light 
+            : SystemUiOverlayStyle.dark);
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: statusBarStyle,
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        body: CustomScrollView(
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildHeroSection(context, theme, _featuredCars),
+          // Banner ad right below hero
+         const SliverToBoxAdapter(
+            child: const BannerAdWidget(),
+          ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
               padding.left,
@@ -188,13 +226,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 SizedBox(height: Responsive.scaleHeight(context, 4)),
                 if (featuredCars.isNotEmpty)
                   _buildFeaturedSection(context, theme, featuredCars),
-                SizedBox(height: Responsive.scaleHeight(context, 40)),
+                SizedBox(height: Responsive.scaleHeight(context, 24)),
+                // Native ad between sections (only for free users)
+                const NativeAdWidget(),
+                SizedBox(height: Responsive.scaleHeight(context, 24)),
                 _buildRecentSection(context, theme, _recentCars),
                 SizedBox(height: Responsive.scaleHeight(context, 32)),
               ]),
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -205,6 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         expandedHeight: Responsive.scaleHeight(context, 200),
         pinned: true,
         elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         title: Text(
           AppConstants.appName,
           style: theme.textTheme.titleLarge?.copyWith(
@@ -215,8 +258,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.share_rounded),
-            onPressed: () {
-              // TODO: Implement share functionality
+            onPressed: () async {
+              await ShareService().shareApp();
             },
             tooltip: 'Share',
           ),
@@ -233,31 +276,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-            child: SafeArea(
-              child: Padding(
-                padding: Responsive.padding(context),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      AppConstants.appName,
-                      style: theme.textTheme.headlineLarge?.copyWith(
-                        color: theme.colorScheme.onPrimary,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                      ),
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top,
+                left: Responsive.scaleWidth(context, 16),
+                right: Responsive.scaleWidth(context, 16),
+                bottom: Responsive.scaleHeight(context, 16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    AppConstants.appName,
+                    style: theme.textTheme.headlineLarge?.copyWith(
+                      color: theme.colorScheme.onPrimary,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
                     ),
-                    SizedBox(height: Responsive.scaleHeight(context, 8)),
-                    Text(
-                      'Your premium car collection',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onPrimary.withValues(alpha: 0.9),
-                        fontWeight: FontWeight.w500,
-                      ),
+                  ),
+                  SizedBox(height: Responsive.scaleHeight(context, 8)),
+                  Text(
+                    'Your premium car collection',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onPrimary.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w500,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -269,40 +315,119 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final currentIndex = _heroCarIndex % featuredCars.length;
     final heroCar = featuredCars[currentIndex];
 
+    // Determine status bar style: light when hero visible, theme-based when scrolled away
+    final heroStatusBarStyle = _isHeroVisible 
+        ? SystemUiOverlayStyle.light 
+        : (theme.brightness == Brightness.dark 
+            ? SystemUiOverlayStyle.light 
+            : SystemUiOverlayStyle.dark);
+
     return SliverAppBar(
       expandedHeight: Responsive.scaleHeight(context, 380),
       pinned: true,
       elevation: 0,
-      systemOverlayStyle: SystemUiOverlayStyle.light,
+      systemOverlayStyle: heroStatusBarStyle,
       backgroundColor: theme.colorScheme.surface,
-      foregroundColor: theme.colorScheme.onSurface,
+      foregroundColor: _isHeroVisible ? Colors.white : theme.colorScheme.onSurface,
       title: Text(
         AppConstants.appName,
         style: theme.textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w900,
           letterSpacing: -0.3,
+          color: _isHeroVisible ? Colors.white : theme.colorScheme.onSurface,
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.share_rounded),
-          onPressed: () {
-            // TODO: Implement share functionality
+        StreamBuilder<UserData?>(
+          stream: UserService.instance.currentUserData,
+          builder: (context, snapshot) {
+            final userData = snapshot.data;
+            final isPro = userData?.hasValidSubscription ?? false;
+            final iconColor = _isHeroVisible ? Colors.white : theme.colorScheme.onSurface;
+            
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Credits/Pro badge
+                if (userData != null)
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.scaleWidth(context, 8),
+                    ),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Responsive.scaleWidth(context, 10),
+                        vertical: Responsive.scaleHeight(context, 5),
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isHeroVisible
+                            ? Colors.black.withOpacity(0.5)
+                            : (isPro
+                                ? Colors.amber.withOpacity(0.2)
+                                : theme.colorScheme.surfaceContainerHighest),
+                        borderRadius: BorderRadius.circular(20),
+                        border: isPro && !_isHeroVisible
+                            ? Border.all(color: Colors.amber, width: 1.5)
+                            : null,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isPro)
+                            Icon(
+                              Icons.verified_rounded,
+                              size: 14,
+                              color: _isHeroVisible ? Colors.white : Colors.amber,
+                            ),
+                          if (isPro)
+                            SizedBox(width: Responsive.scaleWidth(context, 4)),
+                          Text(
+                            isPro ? 'Pro' : '${userData.credits.toStringAsFixed(1)} Credits',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: iconColor,
+                              fontSize: Responsive.fontSize(context, 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                // Share icon
+                IconButton(
+                  icon: Icon(
+                    Icons.share_rounded,
+                    color: iconColor,
+                  ),
+                  onPressed: () async {
+                    await ShareService().shareApp();
+                  },
+                  tooltip: 'Share',
+                ),
+                // Account button (user logo)
+                IconButton(
+                  icon: Icon(
+                    AuthService().currentUser != null
+                        ? Icons.account_circle_rounded
+                        : Icons.login_rounded,
+                    color: iconColor,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AccountScreen(),
+                      ),
+                    );
+                  },
+                  tooltip: AuthService().currentUser != null ? 'Account' : 'Sign In',
+                ),
+              ],
+            );
           },
-          tooltip: 'Share',
         ),
       ],
-      flexibleSpace: LayoutBuilder(
-        builder: (context, constraints) {
-          final expanded = constraints.biggest.height >= Responsive.scaleHeight(context, 380);
-          final isLight = !expanded; // Assume dark image, so use light status bar
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            SystemChrome.setSystemUIOverlayStyle(
-              isLight ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-            );
-          });
-          
-          return FlexibleSpaceBar(
+      flexibleSpace: FlexibleSpaceBar(
             background: GestureDetector(
               onTap: () {
                 Navigator.push(
@@ -371,14 +496,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   // Content
-                  SafeArea(
-                    child: Padding(
-                      padding: Responsive.padding(context),
-                      
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top,
+                      left: Responsive.scaleWidth(context, 16),
+                      right: Responsive.scaleWidth(context, 16),
+                      bottom: Responsive.scaleHeight(context, 16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
                           // Featured car details at bottom
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,14 +581,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
-        },
-      ),
-    );
   }
 
   Widget _buildHeroBadge(BuildContext context, ThemeData theme, IconData icon, String label) {
