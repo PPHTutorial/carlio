@@ -137,11 +137,9 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
   bool get _shouldShowCarSelection {
     // Show car selection if:
     // - Less than 2 cars selected, OR
-    // - No comparison result and less than 5 cars and user wants to add more
+    // - User explicitly wants to add more cars (showCarSelection is true) and less than 5 cars
     return _selectedCars.length < 2 ||
-        (_comparisonResult == null &&
-            _selectedCars.length < 5 &&
-            _showCarSelection);
+        (_showCarSelection && _selectedCars.length < 5);
   }
 
   void _runComparison() async {
@@ -274,11 +272,13 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
                               onAdClosed: () {
                                 setState(() {
                                   _showCarSelection = true;
+                                  _comparisonResult = null; // Reset comparison to show selection view
                                 });
                               },
                               onError: (error) {
                                 setState(() {
                                   _showCarSelection = true;
+                                  _comparisonResult = null; // Reset comparison to show selection view
                                 });
                               },
                             );
@@ -518,6 +518,45 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
           if (_comparisonResult != null) _buildActionButtons(context, theme),
           if (_comparisonResult != null)
             SizedBox(height: Responsive.scaleHeight(context, 24)),
+          // Add More Cars button (when comparison is shown and less than 5 cars)
+          if (_comparisonResult != null && _selectedCars.length < 5)
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: Responsive.scaleWidth(context, 16),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    // Show interstitial ad
+                    await _adService.showInterstitialAd(
+                      onAdClosed: () {
+                        setState(() {
+                          _showCarSelection = true;
+                          _comparisonResult = null; // Reset comparison to show selection view
+                        });
+                      },
+                      onError: (error) {
+                        setState(() {
+                          _showCarSelection = true;
+                          _comparisonResult = null; // Reset comparison to show selection view
+                        });
+                      },
+                    );
+                  },
+                  icon: Icon(Icons.add_circle_outline_rounded),
+                  label: Text('Add More Cars (${_selectedCars.length}/5)'),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.scaleWidth(context, 24),
+                      vertical: Responsive.scaleHeight(context, 16),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (_comparisonResult != null && _selectedCars.length < 5)
+            SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Category scores comparison
           if (_comparisonResult != null)
             _buildCategoryScoresComparison(context, theme),
@@ -559,7 +598,7 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
                 BorderRadius.circular(Responsive.scaleWidth(context, 12)),
           ),
           child: Row(children: [
-            Text('${_selectedCars.length} Cars in comparison:  ',
+            Text('${_selectedCars.length} comparison:  ',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w600,
