@@ -512,49 +512,11 @@ class _SpecsCompareScreenState extends State<SpecsCompareScreen> {
             SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Native ad after winner card
           if (_comparisonResult != null) NativeAdWidget(),
-          if (_comparisonResult != null)
-            SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Action buttons (share, save, bookmark, fullscreen)
           if (_comparisonResult != null) _buildActionButtons(context, theme),
           if (_comparisonResult != null)
             SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Add More Cars button (when comparison is shown and less than 5 cars)
-          if (_comparisonResult != null && _selectedCars.length < 5)
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: Responsive.scaleWidth(context, 16),
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    // Show interstitial ad
-                    await _adService.showInterstitialAd(
-                      onAdClosed: () {
-                        setState(() {
-                          _showCarSelection = true;
-                          _comparisonResult = null; // Reset comparison to show selection view
-                        });
-                      },
-                      onError: (error) {
-                        setState(() {
-                          _showCarSelection = true;
-                          _comparisonResult = null; // Reset comparison to show selection view
-                        });
-                      },
-                    );
-                  },
-                  icon: Icon(Icons.add_circle_outline_rounded),
-                  label: Text('Add More Cars (${_selectedCars.length}/5)'),
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: Responsive.scaleWidth(context, 24),
-                      vertical: Responsive.scaleHeight(context, 16),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           if (_comparisonResult != null && _selectedCars.length < 5)
             SizedBox(height: Responsive.scaleHeight(context, 24)),
           // Category scores comparison
