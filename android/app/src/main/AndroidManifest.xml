@@ -2,16 +2,13 @@
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- Removed READ_MEDIA_IMAGES - app only saves images, doesn't read them -->
+    <!-- Removed READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE - not needed for saving images on Android 10+ -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
 
     <application
-        android:label="Carlio..."
+        android:label="Carco"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -42,10 +39,12 @@
             </intent-filter>
         </activity>
         <!-- AdMob AdActivity for full-screen ads (interstitial, rewarded, etc.) -->
+        <!-- Using NoActionBar theme to ensure ads cover entire screen without system UI interference -->
         <activity
             android:name="com.google.android.gms.ads.AdActivity"
             android:exported="false"
-            android:theme="@android:style/Theme.Translucent" />
+            android:theme="@android:style/Theme.Translucent"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

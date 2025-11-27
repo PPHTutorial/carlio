@@ -6,6 +6,7 @@ import '../../core/services/car_service.dart';
 import '../../core/services/ad_service.dart';
 import '../../core/services/user_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/app_feedback_service.dart';
 import '../../models/car_data.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../garage/garage_screen.dart';
@@ -17,22 +18,68 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   final CarService _carService = CarService();
+  final AppFeedbackService _feedbackService = AppFeedbackService();
   List<CarData> _cars = [];
   bool _isLoading = true;
   bool _isScraping = false;
   int _currentPage = 0;
+  DateTime? _appStartTime;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _appStartTime = DateTime.now();
     _loadCars();
+    // Track session
+    _feedbackService.trackSession();
     // Show app open ad on home screen load
     _showAppOpenAd();
     // Fetch user data when screen loads (if user is signed in)
     _fetchUserDataOnLoad();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _carService.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      // App is going to background - check if we should show feedback prompt
+      _checkAndShowFeedbackOnExit();
+    }
+  }
+
+  Future<void> _checkAndShowFeedbackOnExit() async {
+    if (!mounted) return;
+
+    final shouldShow = await _feedbackService.shouldShowOnExit();
+    if (shouldShow && _appStartTime != null) {
+      // Only show if user has been using app for at least 30 seconds
+      final sessionDuration = DateTime.now().difference(_appStartTime!);
+      if (sessionDuration.inSeconds >= 30) {
+        // Small delay to ensure app state is stable
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          try {
+            await _feedbackService.showFeedbackDialog(context);
+          } catch (e) {
+            // Silently handle any errors showing the dialog
+            print('Error showing feedback dialog: $e');
+          }
+        }
+      }
+    }
   }
 
   /// Automatically fetch user data when home screen loads
@@ -58,12 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _carService.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadCars({bool startScraping = true}) async {
     setState(() {
       _isLoading = true;
@@ -72,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // Load from cache first
       final cars = await _carService.loadCars();
-      
+
       setState(() {
         _cars = cars;
         _isLoading = false;
@@ -86,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isLoading = false;
       });
-      
+
       // Start scraping if loading fails
       if (startScraping && !_carService.isScraping) {
         _startInitialScraping();
@@ -144,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final nextPage = _currentPage + 1;
-      
+
       // Load more cars with progressive updates
       final updatedCars = await _carService.loadMoreCars(
         currentPage: nextPage,
@@ -238,7 +279,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     'This may take a moment',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      color:
+                          theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -297,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, userDataSnapshot) {
         // When user signs in, this stream will automatically update
         // and trigger a rebuild with the new user data
-        
+
         return Scaffold(
           /* appBar: AppBar(
             automaticallyImplyLeading: false,
@@ -306,7 +348,8 @@ class _HomeScreenState extends State<HomeScreen> {
             index: _currentIndex,
             children: [
               DashboardScreen(
-                key: ValueKey('dashboard_${_currentIndex == 0 ? DateTime.now().millisecondsSinceEpoch ~/ (1000 * 10) : 0}'),
+                key: ValueKey(
+                    'dashboard_${_currentIndex == 0 ? DateTime.now().millisecondsSinceEpoch ~/ (1000 * 10) : 0}'),
                 cars: _cars,
                 onLoadMore: _loadMoreCars,
                 isLoadingMore: _isScraping,
@@ -318,85 +361,87 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-      bottomNavigationBar: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Progress indicator when loading more
-              if (_isScraping)
-                Container(
-                  height: 3,
-                  child: LinearProgressIndicator(
-                    minHeight: 3,
-                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      theme.colorScheme.primary,
-                    ),
-                  ),
-                ),
-              // Custom bottom navigation
-              Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.colorScheme.shadow.withValues(alpha: 0.1),
-                      blurRadius: 12,
-                      offset: const Offset(0, -4),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: Responsive.scaleWidth(context, 16),
-                      vertical: Responsive.scaleHeight(context, 8),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        // Dashboard button
-                        Expanded(
-                          child: _buildNavButton(
-                            context,
-                            theme,
-                            icon: Icons.dashboard_outlined,
-                            selectedIcon: Icons.dashboard_rounded,
-                            label: 'Dashboard',
-                            isSelected: _currentIndex == 0,
-                            onTap: () {
-                              setState(() {
-                                _currentIndex = 0;
-                              });
-                            },
-                          ),
+          bottomNavigationBar: Consumer<ThemeProvider>(
+            builder: (context, themeProvider, _) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Progress indicator when loading more
+                  if (_isScraping)
+                    Container(
+                      height: 3,
+                      child: LinearProgressIndicator(
+                        minHeight: 3,
+                        backgroundColor:
+                            theme.colorScheme.surfaceContainerHighest,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          theme.colorScheme.primary,
                         ),
-                        // Garage button
-                        Expanded(
-                          child: _buildNavButton(
-                            context,
-                            theme,
-                            icon: Icons.garage_outlined,
-                            selectedIcon: Icons.garage_rounded,
-                            label: 'Garage',
-                            isSelected: _currentIndex == 1,
-                            onTap: () {
-                              setState(() {
-                                _currentIndex = 1;
-                              });
-                            },
-                          ),
+                      ),
+                    ),
+                  // Custom bottom navigation
+                  Container(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              theme.colorScheme.shadow.withValues(alpha: 0.1),
+                          blurRadius: 12,
+                          offset: const Offset(0, -4),
                         ),
                       ],
                     ),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: Responsive.scaleWidth(context, 16),
+                          vertical: Responsive.scaleHeight(context, 8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            // Dashboard button
+                            Expanded(
+                              child: _buildNavButton(
+                                context,
+                                theme,
+                                icon: Icons.dashboard_outlined,
+                                selectedIcon: Icons.dashboard_rounded,
+                                label: 'Dashboard',
+                                isSelected: _currentIndex == 0,
+                                onTap: () {
+                                  setState(() {
+                                    _currentIndex = 0;
+                                  });
+                                },
+                              ),
+                            ),
+                            // Garage button
+                            Expanded(
+                              child: _buildNavButton(
+                                context,
+                                theme,
+                                icon: Icons.garage_outlined,
+                                selectedIcon: Icons.garage_rounded,
+                                label: 'Garage',
+                                isSelected: _currentIndex == 1,
+                                onTap: () {
+                                  setState(() {
+                                    _currentIndex = 1;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+                ],
+              );
+            },
+          ),
           floatingActionButton: Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
               final theme = Theme.of(context);

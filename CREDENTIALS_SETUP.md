@@ -66,12 +66,13 @@ File: `lib/core/services/purchase_service.dart`
 Lines: 11-16
 
 Current product IDs (update if yours differ):
-- `monthly_subscription`
-- `yearly_subscription`
-- `lifetime_subscription`
-- `credits_10`
-- `credits_25`
-- `credits_50`
+- `monthly_10`
+- `quarterly_35`
+- `halfly_75`
+- `yearly_200`
+- `10credit`
+- `25credit`
+- `50credit`
 
 ## 📝 Summary
 

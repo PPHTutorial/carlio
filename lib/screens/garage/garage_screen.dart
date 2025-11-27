@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:carcollection/core/services/ad_service.dart';
+import 'package:carcollection/core/services/app_feedback_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/utils/responsive.dart';
@@ -30,24 +31,24 @@ class _GarageScreenState extends State<GarageScreen> {
   String? _selectedBrand;
   int? _selectedYear;
   Timer? _searchDebounceTimer;
-  
+
   // Cached values to avoid recalculation on every build
   List<CarData>? _cachedFilteredCars;
   String? _lastSearchQuery;
   String? _lastSelectedBrand;
   int? _lastSelectedYear;
   int _lastCarsLength = 0;
-  
+
   List<String>? _cachedUniqueBrands;
   List<int>? _cachedUniqueYears;
   late final TextEditingController _searchController;
-  
+
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
   }
-  
+
   @override
   void dispose() {
     _searchDebounceTimer?.cancel();
@@ -62,14 +63,14 @@ class _GarageScreenState extends State<GarageScreen> {
         _selectedBrand != _lastSelectedBrand ||
         _selectedYear != _lastSelectedYear ||
         widget.cars.length != _lastCarsLength) {
-      
       var filtered = widget.cars;
 
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         filtered = filtered.where((car) {
           return car.name.toLowerCase().contains(query) ||
-              (car.data.countryOfOrigin?.toLowerCase().contains(query) ?? false);
+              (car.data.countryOfOrigin?.toLowerCase().contains(query) ??
+                  false);
         }).toList();
       }
 
@@ -125,7 +126,7 @@ class _GarageScreenState extends State<GarageScreen> {
     }
     return _cachedUniqueYears!;
   }
-  
+
   @override
   void didUpdateWidget(GarageScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -142,7 +143,7 @@ class _GarageScreenState extends State<GarageScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-      return AnnotatedRegion<SystemUiOverlayStyle>(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         body: Column(
@@ -158,16 +159,20 @@ class _GarageScreenState extends State<GarageScreen> {
                   : CarListScreen(
                       cars: _filteredCars,
                       onCarTap: (car) async {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CarDetailScreen(car: car),
-                          ),
-                        );
-                        // Show app open ad after navigation
-                        Future.delayed(const Duration(milliseconds: 500), () {
-                          AdService.instance.showAppOpenAd();
-                        });
+                        // Track action
+                        AppFeedbackService().trackAction();
+                        // Show app open ad before navigation
+                        AdService.instance.showAppOpenAd();
+                        // Small delay to allow ad to show
+                        await Future.delayed(const Duration(milliseconds: 300));
+                        if (mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CarDetailScreen(car: car),
+                            ),
+                          );
+                        }
                       },
                       onLoadMore: widget.onLoadMore,
                       isLoadingMore: widget.isLoadingMore,
@@ -204,32 +209,33 @@ class _GarageScreenState extends State<GarageScreen> {
           children: [
             Row(
               children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'My Garage',
-                      style: theme.textTheme.headlineLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: Responsive.scaleHeight(context, 16)),
+                      Text(
+                        'My Garage',
+                        style: theme.textTheme.headlineLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: Responsive.scaleHeight(context, 4)),
-                    Text(
-                      '${_filteredCars.length} ${_filteredCars.length == 1 ? 'car' : 'cars'} in collection',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
+                      SizedBox(height: Responsive.scaleHeight(context, 4)),
+                      Text(
+                        '${_filteredCars.length} ${_filteredCars.length == 1 ? 'car' : 'cars'} in collection',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          SizedBox(height: Responsive.scaleHeight(context, 16)),
-          _buildPremiumSearchField(context, theme),
+              ],
+            ),
+            SizedBox(height: Responsive.scaleHeight(context, 16)),
+            _buildPremiumSearchField(context, theme),
           ],
         ),
       ),
@@ -254,7 +260,7 @@ class _GarageScreenState extends State<GarageScreen> {
         onChanged: (value) {
           // Update display immediately for UI responsiveness
           _displaySearchQuery = value;
-          
+
           // Debounce actual filtering to avoid performance issues
           _searchDebounceTimer?.cancel();
           _searchDebounceTimer = Timer(const Duration(milliseconds: 300), () {
@@ -304,7 +310,6 @@ class _GarageScreenState extends State<GarageScreen> {
 
   Widget _buildPremiumFilters(BuildContext context, ThemeData theme) {
     return Container(
-      
       padding: EdgeInsets.symmetric(
         horizontal: Responsive.scaleWidth(context, 8),
         vertical: Responsive.scaleHeight(context, 8),
@@ -332,7 +337,8 @@ class _GarageScreenState extends State<GarageScreen> {
             ),
             SizedBox(width: Responsive.scaleWidth(context, 12)),
             ..._uniqueBrands.take(12).map((brand) => Padding(
-                  padding: EdgeInsets.only(right: Responsive.scaleWidth(context, 12)),
+                  padding: EdgeInsets.only(
+                      right: Responsive.scaleWidth(context, 12)),
                   child: _buildPremiumFilterChip(
                     context,
                     theme,
@@ -357,7 +363,8 @@ class _GarageScreenState extends State<GarageScreen> {
             ),
             SizedBox(width: Responsive.scaleWidth(context, 12)),
             ..._uniqueYears.take(10).map((year) => Padding(
-                  padding: EdgeInsets.only(right: Responsive.scaleWidth(context, 12)),
+                  padding: EdgeInsets.only(
+                      right: Responsive.scaleWidth(context, 12)),
                   child: _buildPremiumFilterChip(
                     context,
                     theme,
@@ -393,7 +400,8 @@ class _GarageScreenState extends State<GarageScreen> {
             color: isSelected
                 ? theme.colorScheme.primary
                 : theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(Responsive.scaleWidth(context, 20)),
+            borderRadius:
+                BorderRadius.circular(Responsive.scaleWidth(context, 20)),
             border: Border.all(
               color: isSelected
                   ? theme.colorScheme.primary

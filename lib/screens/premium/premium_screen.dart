@@ -186,18 +186,17 @@ class _PremiumScreenState extends State<PremiumScreen> {
                           SizedBox(height: Responsive.scaleHeight(context, 16)),
                           _buildSubscriptionPlans(context, theme),
                           SizedBox(height: Responsive.scaleHeight(context, 32)),
-                          
+
                           // Premium Features
                           _buildFeaturesSection(context, theme),
                           SizedBox(height: Responsive.scaleHeight(context, 32)),
-
                         ],
 
                         // Credit Packages
                         _buildSectionHeader(context, theme, 'Buy Credits'),
                         SizedBox(height: Responsive.scaleHeight(context, 8)),
                         Text(
-                          'Minimum purchase: 10 credits (with 7 bonus = 17 total)',
+                          'Pick the credit pack that fits your needs. Credits never expire.',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -320,7 +319,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
       {
         'icon': Icons.stars_rounded,
         'title': 'Premium Credits',
-        'description': '7 bonus credits included',
+        'description': 'Recurring credits with every plan',
         'color': Colors.purple,
       },
       {
@@ -419,13 +418,43 @@ class _PremiumScreenState extends State<PremiumScreen> {
           context,
           theme,
           planName: 'Monthly',
-          price: '\$55',
+          price: '\$10',
           period: '/month',
-          productId: 'monthly_subscription',
+          productId: 'monthly_10',
           features: [
-            '7 bonus credits',
-            'All premium features',
-            'Cancel anytime'
+            'Unlock all premium features',
+            'Ad-free experience',
+            'Cancel anytime',
+          ],
+          isPopular: false,
+        ),
+        SizedBox(height: Responsive.scaleHeight(context, 16)),
+        _buildPlanCard(
+          context,
+          theme,
+          planName: 'Quarterly',
+          price: '\$35',
+          period: '/quarter',
+          productId: 'quarterly_35',
+          features: [
+            'Unlock all premium features',
+            'Priority support',
+            'Save compared to monthly',
+          ],
+          isPopular: true,
+        ),
+        SizedBox(height: Responsive.scaleHeight(context, 16)),
+        _buildPlanCard(
+          context,
+          theme,
+          planName: 'Half-Yearly',
+          price: '\$75',
+          period: '/6 months',
+          productId: 'halfly_75',
+          features: [
+            'Unlock all premium features',
+            'Priority email support',
+            'Great for long-term creators',
           ],
           isPopular: false,
         ),
@@ -434,29 +463,13 @@ class _PremiumScreenState extends State<PremiumScreen> {
           context,
           theme,
           planName: 'Yearly',
-          price: '\$250',
+          price: '\$200',
           period: '/year',
-          productId: 'yearly_subscription',
+          productId: 'yearly_200',
           features: [
-            '7 bonus credits',
-            'All premium features',
-            'Best value',
-            'Save \$410'
-          ],
-          isPopular: true,
-        ),
-        SizedBox(height: Responsive.scaleHeight(context, 16)),
-        _buildPlanCard(
-          context,
-          theme,
-          planName: 'Lifetime',
-          price: '\$1000',
-          period: 'one-time',
-          productId: 'lifetime_subscription',
-          features: [
-            '7 bonus credits',
-            'All premium features',
-            'Pay once, use forever'
+            'Unlock all premium features',
+            'Priority support',
+            'Best long-term value',
           ],
           isPopular: false,
         ),
@@ -655,9 +668,9 @@ class _PremiumScreenState extends State<PremiumScreen> {
   Widget _buildCreditPackages(
       BuildContext context, ThemeData theme, UserData userData) {
     final packages = [
-      {'credits': 10, 'bonus': 7, 'total': 17, 'productId': 'credits_10'},
-      {'credits': 25, 'bonus': 7, 'total': 32, 'productId': 'credits_25'},
-      {'credits': 50, 'bonus': 7, 'total': 57, 'productId': 'credits_50'},
+      {'credits': 10, 'bonus': 7, 'productId': '10credit'},
+      {'credits': 25, 'bonus': 7, 'productId': '25credit'},
+      {'credits': 50, 'bonus': 7, 'productId': '50credit'},
     ];
 
     return Column(
@@ -683,7 +696,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
               onTap: () async {
                 try {
                   await _purchaseService
-                      .buySubscription(package['productId'] as String);
+                      .buyConsumableProduct(package['productId'] as String);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -747,13 +760,14 @@ class _PremiumScreenState extends State<PremiumScreen> {
                                   vertical: Responsive.scaleHeight(context, 4),
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.2),
+                                  color: theme.colorScheme.primary
+                                      .withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
                                   '+${package['bonus']} bonus',
                                   style: theme.textTheme.labelSmall?.copyWith(
-                                    color: Colors.green,
+                                    color: theme.colorScheme.primary,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -762,7 +776,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                           ),
                           SizedBox(height: Responsive.scaleHeight(context, 4)),
                           Text(
-                            'Total: ${package['total']} credits',
+                            'One-time purchase • ${(package['credits'] as int) + (package['bonus'] as int)} credits total',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),

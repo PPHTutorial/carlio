@@ -1,3 +1,4 @@
+import 'package:carcollection/core/widgets/native_ad_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -16,6 +17,7 @@ import '../../core/services/ar_service.dart';
 import '../../core/services/ad_service.dart';
 import '../../core/services/share_service.dart';
 import '../../core/services/car_service.dart';
+import '../../core/services/app_feedback_service.dart';
 import '../../models/car_data.dart';
 import 'image_preview_screen.dart';
 import 'specs_compare_screen.dart';
@@ -43,6 +45,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
   bool _isPlayingSound = false;
   bool _isGeneratingAISummary = false;
   String? _aiSummary;
+  bool _isAdShowing = false; // Track when ads are displayed
   final AudioService _audioService = AudioService();
   final FavoritesService _favoritesService = FavoritesService.instance;
   final BookmarksService _bookmarksService = BookmarksService.instance;
@@ -55,10 +58,13 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
     super.initState();
     _loadFavoriteStatus();
     _loadBookmarkStatus();
+    // Track action - user viewed car detail
+    AppFeedbackService().trackAction();
     // Show app open ad on detail screen
     _showAppOpenAd();
     // Listen to audio playback state changes
-    _audioStateSubscription = _audioService.playbackStateStream.listen((isPlaying) {
+    _audioStateSubscription =
+        _audioService.playbackStateStream.listen((isPlaying) {
       if (mounted) {
         setState(() {
           _isPlayingSound = isPlaying;
@@ -87,15 +93,29 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
     final shouldShowAd = await AdService.instance.shouldShowAds();
 
     if (shouldShowAd) {
+      // Hide app bar before showing ad
+      if (mounted) {
+        setState(() {
+          _isAdShowing = true;
+        });
+      }
+
       await AdService.instance.showInterstitialAd(
         onAdClosed: () {
+          // Restore app bar after ad is closed
           if (mounted) {
+            setState(() {
+              _isAdShowing = false;
+            });
             Navigator.pop(context);
           }
         },
         onError: (error) {
-          // Navigate back even if ad fails
+          // Restore app bar even if ad fails
           if (mounted) {
+            setState(() {
+              _isAdShowing = false;
+            });
             Navigator.pop(context);
           }
         },
@@ -125,6 +145,8 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
   }
 
   Future<void> _toggleFavorite() async {
+    // Track action
+    AppFeedbackService().trackAction();
     setState(() {
       _isLoadingFavorite = true;
     });
@@ -149,6 +171,8 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
   }
 
   Future<void> _toggleBookmark() async {
+    // Track action
+    AppFeedbackService().trackAction();
     setState(() {
       _isLoadingBookmark = true;
     });
@@ -186,7 +210,8 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
 
     try {
       // Get or assign sound for this car using CarSoundService
-      final soundAssetPath = await _carSoundService.getOrAssignSound(widget.car.id);
+      final soundAssetPath =
+          await _carSoundService.getOrAssignSound(widget.car.id);
 
       if (soundAssetPath.isNotEmpty) {
         // Play sound from asset
@@ -287,7 +312,8 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          _buildHeroSliderAppBar(context, theme),
+          // Hide app bar when ad is showing
+          if (!_isAdShowing) _buildHeroSliderAppBar(context, theme),
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -299,9 +325,13 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                 // Banner ad below action buttons and before details card
                 const BannerAdWidget(),
                 _buildDetails(context, theme),
+
+                const NativeAdWidget(),
+
                 if (widget.car.data.article != null &&
                     widget.car.data.article!.isNotEmpty)
                   _buildAISummary(context, theme),
+
                 if (widget.car.data.article != null &&
                     widget.car.data.article!.isNotEmpty)
                   //_buildArticle(context, theme),
@@ -408,19 +438,51 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                     }).toList();
 
                     // Show interstitial ad on image click (with frequency capping)
+                    // Hide app bar before showing ad
+                    if (mounted) {
+                      setState(() {
+                        _isAdShowing = true;
+                      });
+                    }
+
                     await AdService.instance.showInterstitialAdOnImageClick(
                       onAdClosed: () {
-                        // Navigate after ad is closed or skipped
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ImagePreviewScreen(
-                              imageUrls: imageUrls,
-                              initialIndex: _currentImageIndex,
-                              carName: widget.car.name,
+                        // Restore app bar after ad is closed
+                        if (mounted) {
+                          setState(() {
+                            _isAdShowing = false;
+                          });
+                          // Navigate after ad is closed or skipped
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ImagePreviewScreen(
+                                imageUrls: imageUrls,
+                                initialIndex: _currentImageIndex,
+                                carName: widget.car.name,
+                              ),
                             ),
-                          ),
-                        );
+                          );
+                        }
+                      },
+                      onError: (error) {
+                        // Restore app bar even if ad fails
+                        if (mounted) {
+                          setState(() {
+                            _isAdShowing = false;
+                          });
+                          // Navigate even if ad fails
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ImagePreviewScreen(
+                                imageUrls: imageUrls,
+                                initialIndex: _currentImageIndex,
+                                carName: widget.car.name,
+                              ),
+                            ),
+                          );
+                        }
                       },
                     );
                   },
@@ -489,84 +551,31 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
               ),
             ),
             // Navigation buttons positioned absolutely at top (like dashboard)
-            Positioned(
-              top: MediaQuery.of(context).padding.top,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Back button
-                  Container(
-                    margin: EdgeInsets.all(Responsive.scaleWidth(context, 8)),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: _handleBackNavigation,
-                    ),
-                  ),
-                  // Action buttons (share, favorite, bookmark)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        margin:
-                            EdgeInsets.all(Responsive.scaleWidth(context, 8)),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: const Icon(Icons.share_rounded,
-                              color: Colors.white),
-                          onPressed: () async {
-                            await ShareService().shareCar(
-                              carName: widget.car.name,
-                              imageUrl: widget.car.imgs.isNotEmpty
-                                  ? ImageUtils.getCarLargeImageUrl(
-                                      widget.car.id,
-                                      widget.car.slug,
-                                      widget.car.imgs[0],
-                                    )
-                                  : null,
-                            );
-                          },
-                        ),
+            // Hide buttons when ad is showing
+            if (!_isAdShowing)
+              Positioned(
+                top: MediaQuery.of(context).padding.top,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Back button
+                    Container(
+                      margin: EdgeInsets.all(Responsive.scaleWidth(context, 8)),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
                       ),
-                      Container(
-                        margin:
-                            EdgeInsets.all(Responsive.scaleWidth(context, 8)),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: _isLoadingFavorite
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white),
-                                  ),
-                                )
-                              : Icon(
-                                  _isFavorite
-                                      ? Icons.favorite_rounded
-                                      : Icons.favorite_border_rounded,
-                                  color:
-                                      _isFavorite ? Colors.red : Colors.white,
-                                ),
-                          onPressed:
-                              _isLoadingFavorite ? null : _toggleFavorite,
-                        ),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: _handleBackNavigation,
                       ),
-                      if (widget.car.data.article != null &&
-                          widget.car.data.article!.isNotEmpty)
+                    ),
+                    // Action buttons (share, favorite, bookmark)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         Container(
                           margin:
                               EdgeInsets.all(Responsive.scaleWidth(context, 8)),
@@ -575,7 +584,31 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
-                            icon: _isLoadingBookmark
+                            icon: const Icon(Icons.share_rounded,
+                                color: Colors.white),
+                            onPressed: () async {
+                              await ShareService().shareCar(
+                                carName: widget.car.name,
+                                imageUrl: widget.car.imgs.isNotEmpty
+                                    ? ImageUtils.getCarLargeImageUrl(
+                                        widget.car.id,
+                                        widget.car.slug,
+                                        widget.car.imgs[0],
+                                      )
+                                    : null,
+                              );
+                            },
+                          ),
+                        ),
+                        Container(
+                          margin:
+                              EdgeInsets.all(Responsive.scaleWidth(context, 8)),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: _isLoadingFavorite
                                 ? const SizedBox(
                                     width: 20,
                                     height: 20,
@@ -586,22 +619,54 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                                     ),
                                   )
                                 : Icon(
-                                    _isBookmarked
-                                        ? Icons.bookmark_rounded
-                                        : Icons.bookmark_border_rounded,
-                                    color: _isBookmarked
-                                        ? Colors.amber
-                                        : Colors.white,
+                                    _isFavorite
+                                        ? Icons.favorite_rounded
+                                        : Icons.favorite_border_rounded,
+                                    color:
+                                        _isFavorite ? Colors.red : Colors.white,
                                   ),
                             onPressed:
-                                _isLoadingBookmark ? null : _toggleBookmark,
+                                _isLoadingFavorite ? null : _toggleFavorite,
                           ),
                         ),
-                    ],
-                  ),
-                ],
+                        if (widget.car.data.article != null &&
+                            widget.car.data.article!.isNotEmpty)
+                          Container(
+                            margin: EdgeInsets.all(
+                                Responsive.scaleWidth(context, 8)),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: _isLoadingBookmark
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    )
+                                  : Icon(
+                                      _isBookmarked
+                                          ? Icons.bookmark_rounded
+                                          : Icons.bookmark_border_rounded,
+                                      color: _isBookmarked
+                                          ? Colors.amber
+                                          : Colors.white,
+                                    ),
+                              onPressed:
+                                  _isLoadingBookmark ? null : _toggleBookmark,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
             // Title and badges overlay (ignoring pointer so taps pass through)
             IgnorePointer(
               child: Padding(
@@ -658,7 +723,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                       // SizedBox(height: Responsive.scaleHeight(context, 80)),
+                        // SizedBox(height: Responsive.scaleHeight(context, 80)),
                         Text(
                           widget.car.name,
                           style: theme.textTheme.headlineMedium?.copyWith(
@@ -1182,7 +1247,8 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
     );
   }
 
-  Widget _buildStyledAISummary(BuildContext context, ThemeData theme, String summary) {
+  Widget _buildStyledAISummary(
+      BuildContext context, ThemeData theme, String summary) {
     // Split summary into sentences for color separation
     final sentences = summary
         .split(RegExp(r'[.!?]\s+'))
@@ -1210,7 +1276,9 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
             bottom: Responsive.scaleHeight(context, 12),
           ),
           child: Text(
-            sentence.endsWith('.') || sentence.endsWith('!') || sentence.endsWith('?')
+            sentence.endsWith('.') ||
+                    sentence.endsWith('!') ||
+                    sentence.endsWith('?')
                 ? sentence
                 : '$sentence.',
             style: theme.textTheme.bodyLarge?.copyWith(
@@ -1252,7 +1320,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
 
   void _showSpecificationsButton(BuildContext context, ThemeData theme) async {
     List<CarData> carsToCompare = widget.allCars ?? [];
-    
+
     // If allCars not provided, try to load from cache
     if (carsToCompare.isEmpty) {
       try {
@@ -1261,12 +1329,13 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
         print('Error loading cars for comparison: $e');
       }
     }
-    
+
     if (carsToCompare.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Car list not available for comparison. Please wait for cars to load.'),
+            content: Text(
+                'Car list not available for comparison. Please wait for cars to load.'),
           ),
         );
       }
@@ -1274,6 +1343,7 @@ class _CarDetailScreenState extends State<CarDetailScreen> {
     }
 
     if (mounted) {
+      AdService.instance.showAppOpenAd();
       Navigator.push(
         context,
         MaterialPageRoute(

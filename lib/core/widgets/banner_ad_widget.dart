@@ -4,12 +4,10 @@ import '../services/ad_service.dart';
 import '../services/user_service.dart';
 
 /// Banner ad widget that automatically hides for premium users
+/// Uses default AdMob settings with no custom modifications
 class BannerAdWidget extends StatefulWidget {
-  final AdSize? adSize;
-  
   const BannerAdWidget({
     super.key,
-    this.adSize,
   });
 
   @override
@@ -31,12 +29,12 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   Future<void> _checkPremiumStatus() async {
     final userData = await UserService.instance.getUserData();
     final isPremium = userData?.hasValidSubscription ?? false;
-    
+
     if (mounted) {
       setState(() {
         _isPremiumUser = isPremium;
       });
-      
+
       // If user becomes premium, dispose ad
       if (isPremium && _bannerAd != null) {
         _bannerAd!.dispose();
@@ -49,12 +47,12 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   void _loadBannerAd() async {
     // Don't load if premium user
     if (_isPremiumUser) return;
-    
-    final adSize = widget.adSize ?? AdSize.banner;
-    
+
+    // Use default AdMob banner size - standard 320x50 banner
+    // AdWidget will handle sizing automatically, no constraints needed
     _bannerAd = BannerAd(
       adUnitId: AdService.bannerAdUnitId,
-      size: adSize,
+      size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
@@ -103,13 +101,12 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
       return const SizedBox.shrink();
     }
 
-    final adSize = widget.adSize ?? AdSize.banner;
-    
+    // Span full width while maintaining the banner's height
+    final size = _bannerAd!.size;
     return Container(
+      width: size.width.toDouble(),
+      height: size.height.toDouble(),
       alignment: Alignment.center,
-      width: adSize.width.toDouble(),
-      height: adSize.height.toDouble(),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: AdWidget(ad: _bannerAd!),
     );
   }

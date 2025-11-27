@@ -11,8 +11,8 @@ Future<void> main() async {
   final List<CarData> allCars = [];
   
   try {
-    const int startPage = 0;
-    const int endPage = 66; // 1980 / 30 = 66 pages
+    const int startPage = 26;
+    const int endPage = 200; // 1980 / 30 = 200 pages
     
     print('Starting sequential scrape...');
     print('Scraping pages $startPage to $endPage (${endPage - startPage + 1} pages)\n');

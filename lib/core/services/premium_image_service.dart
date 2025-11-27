@@ -14,16 +14,15 @@ class PremiumImageService {
   static const double MIN_CREDITS_REQUIRED = 5.0; // Minimum 5 credits needed
 
   static Future<bool> requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      final status = await Permission.storage.request();
-      if (status.isGranted) return true;
-      final mediaStatus = await Permission.photos.request();
-      return mediaStatus.isGranted;
-    } else if (Platform.isIOS) {
+    // For saving images, we don't need read permissions on Android 10+
+    // The gal package handles saving without requiring READ_MEDIA_IMAGES permission
+    // On iOS, we still need photos permission for saving
+    if (Platform.isIOS) {
       final status = await Permission.photos.request();
       return status.isGranted;
     }
-    return false;
+    // Android: No permission needed for saving images (gal package handles it via MediaStore)
+    return true;
   }
 
   /// Download image with cropping and watermark logic
@@ -43,19 +42,22 @@ class PremiumImageService {
       if (userData.isInSpendingMode) {
         // User can use credits until they reach 0
         if (userData.credits <= 0) {
-          onStatusUpdate?.call('No credits remaining. Watch ads to earn credits or subscribe to Pro.');
+          onStatusUpdate?.call(
+              'No credits remaining. Watch ads to earn credits or subscribe to Pro.');
           return false;
         }
       } else {
         // Not in spending mode - need at least 5 credits to start
         if (userData.credits < MIN_CREDITS_REQUIRED) {
-          onStatusUpdate?.call('You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn credits or subscribe to Pro.');
+          onStatusUpdate?.call(
+              'You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn credits or subscribe to Pro.');
           return false;
         }
 
         // Check if user has enough credits for the action
         if (userData.credits < ACTION_CREDIT_COST) {
-          onStatusUpdate?.call('Insufficient credits. You need ${ACTION_CREDIT_COST.toInt()} credit for this action.');
+          onStatusUpdate?.call(
+              'Insufficient credits. You need ${ACTION_CREDIT_COST.toInt()} credit for this action.');
           return false;
         }
       }
@@ -74,29 +76,41 @@ class PremiumImageService {
       }
 
       onStatusUpdate?.call('Downloading image...');
-      
+
       final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/temp_${DateTime.now().millisecondsSinceEpoch}.jpg');
-      
+      final tempFile = File(
+          '${tempDir.path}/temp_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
       await _dio.download(imageUrl, tempFile.path);
 
       onStatusUpdate?.call('Processing image...');
-      
+
       // Process image: crop and add watermark if needed
       final processedBytes = await _processImage(
         tempFile.path,
         addWatermark: !userData.hasValidSubscription,
       );
 
-      final processedFile = File('${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final processedFile = File(
+          '${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}.jpg');
       await processedFile.writeAsBytes(processedBytes);
 
-      await Gal.putImage(processedFile.path);
+      try {
+        await Gal.putImage(processedFile.path);
+        onStatusUpdate?.call('Image downloaded successfully');
+      } catch (galError) {
+        print('Error saving image to gallery: $galError');
+        onStatusUpdate?.call('Failed to save image to gallery');
+        // Clean up files
+        try {
+          await tempFile.delete();
+          await processedFile.delete();
+        } catch (_) {}
+        return false;
+      }
 
       await tempFile.delete();
       await processedFile.delete();
-
-      onStatusUpdate?.call('Image downloaded successfully');
       return true;
     } catch (e) {
       print('Error downloading image: $e');
@@ -121,19 +135,22 @@ class PremiumImageService {
       if (userData.isInSpendingMode) {
         // User can use credits until they reach 0
         if (userData.credits <= 0) {
-          onStatusUpdate?.call('No credits remaining. Watch ads to earn credits or subscribe to Pro.');
+          onStatusUpdate?.call(
+              'No credits remaining. Watch ads to earn credits or subscribe to Pro.');
           return false;
         }
       } else {
         // Not in spending mode - need at least 5 credits to start
         if (userData.credits < MIN_CREDITS_REQUIRED) {
-          onStatusUpdate?.call('You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn credits or subscribe to Pro.');
+          onStatusUpdate?.call(
+              'You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn credits or subscribe to Pro.');
           return false;
         }
 
         // Check if user has enough credits for the action
         if (userData.credits < ACTION_CREDIT_COST) {
-          onStatusUpdate?.call('Insufficient credits. You need ${ACTION_CREDIT_COST.toInt()} credit for this action.');
+          onStatusUpdate?.call(
+              'Insufficient credits. You need ${ACTION_CREDIT_COST.toInt()} credit for this action.');
           return false;
         }
       }
@@ -150,13 +167,13 @@ class PremiumImageService {
       // Note: SET_WALLPAPER permission is granted automatically on Android
 
       onStatusUpdate?.call('Downloading image...');
-      
+
       final tempDir = await getApplicationDocumentsDirectory();
       final tempFile = File('${tempDir.path}/wallpaper_temp.jpg');
       await _dio.download(imageUrl, tempFile.path);
 
       onStatusUpdate?.call('Processing image...');
-      
+
       final processedBytes = await _processImage(
         tempFile.path,
         addWatermark: !userData.hasValidSubscription,
@@ -169,7 +186,8 @@ class PremiumImageService {
       // SET_WALLPAPER permission is automatically granted on Android
       const platform = MethodChannel('com.carcollection/wallpaper');
       try {
-        await platform.invokeMethod('setWallpaper', {'imagePath': processedFile.path});
+        await platform
+            .invokeMethod('setWallpaper', {'imagePath': processedFile.path});
         await tempFile.delete();
         await processedFile.delete();
         onStatusUpdate?.call('Wallpaper set successfully');
@@ -204,17 +222,19 @@ class PremiumImageService {
       }
 
       if (!userData.hasValidSubscription) {
-        onStatusUpdate?.call('Pro subscription required to download all images');
+        onStatusUpdate
+            ?.call('Pro subscription required to download all images');
         return false;
       }
 
       final totalCost = imageUrls.length * ACTION_CREDIT_COST;
-      
+
       // Check if user is in spending mode
       if (userData.isInSpendingMode) {
         // User can use credits until they reach 0
         if (userData.credits <= 0) {
-          onStatusUpdate?.call('No credits remaining. Watch ads to earn credits or subscribe to Pro.');
+          onStatusUpdate?.call(
+              'No credits remaining. Watch ads to earn credits or subscribe to Pro.');
           return false;
         }
         // In spending mode, user can use all available credits (even if less than totalCost)
@@ -222,18 +242,20 @@ class PremiumImageService {
       } else {
         // Not in spending mode - need at least 5 credits to start
         if (userData.credits < MIN_CREDITS_REQUIRED) {
-          onStatusUpdate?.call('You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn credits or subscribe to Pro.');
+          onStatusUpdate?.call(
+              'You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn credits or subscribe to Pro.');
           return false;
         }
 
         if (userData.credits < totalCost) {
-          onStatusUpdate?.call('Insufficient credits. Need ${totalCost.toInt()} credits (${imageUrls.length} images × ${ACTION_CREDIT_COST.toInt()} credit each)');
+          onStatusUpdate?.call(
+              'Insufficient credits. Need ${totalCost.toInt()} credits (${imageUrls.length} images × ${ACTION_CREDIT_COST.toInt()} credit each)');
           return false;
         }
       }
 
       // Calculate actual cost (in spending mode, use available credits if less than totalCost)
-      final actualCost = userData.isInSpendingMode 
+      final actualCost = userData.isInSpendingMode
           ? (userData.credits < totalCost ? userData.credits : totalCost)
           : totalCost;
 
@@ -254,16 +276,18 @@ class PremiumImageService {
 
       int downloaded = 0;
       final tempDir = await getTemporaryDirectory();
-      
+
       // Calculate how many images user can actually download
-      final imagesToDownload = userData.isInSpendingMode && userData.credits < totalCost
-          ? (actualCost / ACTION_CREDIT_COST).floor()
-          : imageUrls.length;
+      final imagesToDownload =
+          userData.isInSpendingMode && userData.credits < totalCost
+              ? (actualCost / ACTION_CREDIT_COST).floor()
+              : imageUrls.length;
 
       for (int i = 0; i < imagesToDownload; i++) {
         onStatusUpdate?.call('Processing ${i + 1}/$imagesToDownload...');
-        
-        final tempFile = File('${tempDir.path}/temp_${i}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+        final tempFile = File(
+            '${tempDir.path}/temp_${i}_${DateTime.now().millisecondsSinceEpoch}.jpg');
         await _dio.download(imageUrls[i], tempFile.path);
 
         final processedBytes = await _processImage(
@@ -271,20 +295,29 @@ class PremiumImageService {
           addWatermark: false, // Pro users get no watermark
         );
 
-        final processedFile = File('${tempDir.path}/processed_${i}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        final processedFile = File(
+            '${tempDir.path}/processed_${i}_${DateTime.now().millisecondsSinceEpoch}.jpg');
         await processedFile.writeAsBytes(processedBytes);
 
-        await Gal.putImage(processedFile.path);
-
-        await tempFile.delete();
-        await processedFile.delete();
-
-        downloaded++;
-        onProgress?.call(downloaded, imagesToDownload);
+        try {
+          await Gal.putImage(processedFile.path);
+          downloaded++;
+          onProgress?.call(downloaded, imagesToDownload);
+        } catch (galError) {
+          print('Error saving image $i to gallery: $galError');
+          // Continue with next image instead of failing completely
+        } finally {
+          // Clean up files regardless of success/failure
+          try {
+            await tempFile.delete();
+            await processedFile.delete();
+          } catch (_) {}
+        }
       }
 
       if (userData.isInSpendingMode && imagesToDownload < imageUrls.length) {
-        onStatusUpdate?.call('Downloaded $imagesToDownload of ${imageUrls.length} images (used all available credits)');
+        onStatusUpdate?.call(
+            'Downloaded $imagesToDownload of ${imageUrls.length} images (used all available credits)');
       } else {
         onStatusUpdate?.call('All images downloaded successfully');
       }
@@ -336,23 +369,24 @@ class PremiumImageService {
   static Future<img.Image> _addWatermark(img.Image image) async {
     try {
       // Load watermark image from assets
-      final ByteData watermarkData = await rootBundle.load('assets/images/watermark.png');
+      final ByteData watermarkData =
+          await rootBundle.load('assets/images/watermark.png');
       final Uint8List watermarkBytes = watermarkData.buffer.asUint8List();
-      
+
       // Decode the watermark image
       img.Image? watermark = img.decodeImage(watermarkBytes);
-      
+
       if (watermark == null) {
         print('Warning: Failed to decode watermark.png, skipping watermark');
         return image;
       }
-      
+
       // Calculate watermark size (60% of image width, maintaining aspect ratio)
       final double targetWidth = image.width * 0.2;
       final double scaleFactor = targetWidth / watermark.width;
       final int watermarkWidth = targetWidth.round();
       final int watermarkHeight = (watermark.height * scaleFactor).round();
-      
+
       // Resize watermark to calculated size
       watermark = img.copyResize(
         watermark,
@@ -360,11 +394,11 @@ class PremiumImageService {
         height: watermarkHeight,
         interpolation: img.Interpolation.linear,
       );
-      
+
       // Position watermark at center of the image
       final int watermarkX = (image.width - watermarkWidth) ~/ 2;
       final int watermarkY = (image.height - watermarkHeight) ~/ 2;
-      
+
       // Composite watermark onto the image with alpha blending
       return img.compositeImage(
         image,
@@ -375,7 +409,8 @@ class PremiumImageService {
       );
     } catch (e) {
       print('Error loading watermark: $e');
-      print('Make sure assets/images/watermark.png exists and is declared in pubspec.yaml');
+      print(
+          'Make sure assets/images/watermark.png exists and is declared in pubspec.yaml');
       // Return original image if watermark loading fails
       return image;
     }
@@ -398,7 +433,7 @@ class PremiumImageService {
     }
 
     final availableCredits = userData.credits;
-    
+
     // Check if user is in spending mode (can use credits until 0)
     if (userData.isInSpendingMode) {
       // User can use credits as long as they have any credits remaining
@@ -428,7 +463,7 @@ class PremiumImageService {
         };
       }
     }
-    
+
     // Not in spending mode - need minimum 5 credits
     if (availableCredits < MIN_CREDITS_REQUIRED) {
       return {
@@ -440,7 +475,8 @@ class PremiumImageService {
         'creditsNeeded': ACTION_CREDIT_COST,
         'minCreditsNeeded': MIN_CREDITS_REQUIRED,
         'availableCredits': availableCredits,
-        'message': 'You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn 1.2 credits per ad.',
+        'message':
+            'You need at least ${MIN_CREDITS_REQUIRED.toInt()} credits. Watch ads to earn 1.2 credits per ad.',
       };
     }
 
@@ -455,7 +491,8 @@ class PremiumImageService {
         'creditsNeeded': ACTION_CREDIT_COST,
         'minCreditsNeeded': MIN_CREDITS_REQUIRED,
         'availableCredits': availableCredits,
-        'message': 'You need ${ACTION_CREDIT_COST.toInt()} credit for this action. Watch ads to earn credits.',
+        'message':
+            'You need ${ACTION_CREDIT_COST.toInt()} credit for this action. Watch ads to earn credits.',
       };
     }
 
@@ -472,4 +509,3 @@ class PremiumImageService {
     };
   }
 }
-

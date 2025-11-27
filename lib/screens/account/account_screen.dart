@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/services/user_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/ad_service.dart';
 import '../../core/services/share_service.dart';
 import '../../core/services/app_rating_service.dart';
 import '../../core/widgets/banner_ad_widget.dart';
@@ -17,7 +18,7 @@ class AccountScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authService = AuthService();
-    
+
     // Check if user is logged in
     if (authService.currentUser == null) {
       return Scaffold(
@@ -75,7 +76,7 @@ class AccountScreen extends StatelessWidget {
         stream: UserService.instance.currentUserData,
         builder: (context, snapshot) {
           final userData = snapshot.data;
-          
+
           return Column(
             children: [
               Expanded(
@@ -87,7 +88,7 @@ class AccountScreen extends StatelessWidget {
                       // Profile Header
                       _buildProfileHeader(context, theme, userData),
                       SizedBox(height: Responsive.scaleHeight(context, 24)),
-                      
+
                       // Account Info Section
                       _buildSectionTitle(context, theme, 'Account'),
                       SizedBox(height: Responsive.scaleHeight(context, 12)),
@@ -96,7 +97,8 @@ class AccountScreen extends StatelessWidget {
                         theme,
                         icon: Icons.email_rounded,
                         title: 'Email',
-                        value: authService.currentUser?.email ?? 'Not available',
+                        value:
+                            authService.currentUser?.email ?? 'Not available',
                       ),
                       SizedBox(height: Responsive.scaleHeight(context, 8)),
                       _buildInfoCard(
@@ -104,7 +106,8 @@ class AccountScreen extends StatelessWidget {
                         theme,
                         icon: Icons.person_rounded,
                         title: 'Name',
-                        value: authService.currentUser?.displayName ?? 'Not set',
+                        value:
+                            authService.currentUser?.displayName ?? 'Not set',
                       ),
                       SizedBox(height: Responsive.scaleHeight(context, 8)),
                       if (userData != null)
@@ -117,11 +120,11 @@ class AccountScreen extends StatelessWidget {
                           valueColor: theme.colorScheme.primary,
                         ),
                       SizedBox(height: Responsive.scaleHeight(context, 24)),
-                      
+
                       // Premium Section
                       if (userData != null && !userData.hasValidSubscription)
                         _buildPremiumSection(context, theme),
-                      
+
                       // My Collections Section
                       _buildSectionTitle(context, theme, 'My Collections'),
                       SizedBox(height: Responsive.scaleHeight(context, 12)),
@@ -135,7 +138,8 @@ class AccountScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const BookmarkedCarsScreen(),
+                              builder: (context) =>
+                                  const BookmarkedCarsScreen(),
                             ),
                           );
                         },
@@ -148,16 +152,18 @@ class AccountScreen extends StatelessWidget {
                         title: 'Saved Comparisons',
                         subtitle: 'View your saved comparisons',
                         onTap: () {
+                          AdService.instance.showAppOpenAd();
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const SavedComparisonsScreen(),
+                              builder: (context) =>
+                                  const SavedComparisonsScreen(),
                             ),
                           );
                         },
                       ),
                       SizedBox(height: Responsive.scaleHeight(context, 24)),
-                      
+
                       // Settings Section
                       _buildSectionTitle(context, theme, 'Settings'),
                       SizedBox(height: Responsive.scaleHeight(context, 12)),
@@ -168,6 +174,7 @@ class AccountScreen extends StatelessWidget {
                         title: 'Premium Plans',
                         subtitle: 'Upgrade to Pro',
                         onTap: () {
+                          AdService.instance.showAppOpenAd();
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -204,7 +211,7 @@ class AccountScreen extends StatelessWidget {
                         },
                       ),
                       SizedBox(height: Responsive.scaleHeight(context, 24)),
-                      
+
                       // Account Actions
                       _buildSectionTitle(context, theme, 'Account'),
                       SizedBox(height: Responsive.scaleHeight(context, 12)),
@@ -220,10 +227,12 @@ class AccountScreen extends StatelessWidget {
                             context: context,
                             builder: (context) => AlertDialog(
                               title: const Text('Sign Out'),
-                              content: const Text('Are you sure you want to sign out?'),
+                              content: const Text(
+                                  'Are you sure you want to sign out?'),
                               actions: [
                                 TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
                                   child: const Text('Cancel'),
                                 ),
                                 TextButton(
@@ -233,7 +242,7 @@ class AccountScreen extends StatelessWidget {
                               ],
                             ),
                           );
-                          
+
                           if (confirmed == true && context.mounted) {
                             await authService.signOut();
                             if (context.mounted) {
@@ -259,10 +268,11 @@ class AccountScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileHeader(BuildContext context, ThemeData theme, UserData? userData) {
+  Widget _buildProfileHeader(
+      BuildContext context, ThemeData theme, UserData? userData) {
     final authService = AuthService();
     final isPro = userData?.hasValidSubscription ?? false;
-    
+
     return Container(
       padding: EdgeInsets.all(Responsive.scaleWidth(context, 24)),
       decoration: BoxDecoration(
@@ -406,7 +416,8 @@ class AccountScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, ThemeData theme, String title) {
+  Widget _buildSectionTitle(
+      BuildContext context, ThemeData theme, String title) {
     return Text(
       title,
       style: theme.textTheme.titleLarge?.copyWith(
@@ -575,15 +586,16 @@ class AccountScreen extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(Responsive.scaleWidth(context, 12)),
               decoration: BoxDecoration(
-                color: (isDestructive 
-                    ? theme.colorScheme.errorContainer 
-                    : theme.colorScheme.primaryContainer).withOpacity(0.3),
+                color: (isDestructive
+                        ? theme.colorScheme.errorContainer
+                        : theme.colorScheme.primaryContainer)
+                    .withOpacity(0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: isDestructive 
-                    ? theme.colorScheme.error 
+                color: isDestructive
+                    ? theme.colorScheme.error
                     : theme.colorScheme.primary,
                 size: 24,
               ),
@@ -597,8 +609,8 @@ class AccountScreen extends StatelessWidget {
                     title,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: isDestructive 
-                          ? theme.colorScheme.error 
+                      color: isDestructive
+                          ? theme.colorScheme.error
                           : theme.colorScheme.onSurface,
                     ),
                   ),
@@ -624,4 +636,3 @@ class AccountScreen extends StatelessWidget {
     );
   }
 }
-

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/services/saved_comparisons_service.dart';
 import '../../core/services/car_service.dart';
+import '../../core/services/ad_service.dart';
 import '../../core/widgets/banner_ad_widget.dart';
 import '../../models/car_data.dart';
 import '../car/specs_compare_screen.dart';
@@ -14,7 +15,8 @@ class SavedComparisonsScreen extends StatefulWidget {
 }
 
 class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
-  final SavedComparisonsService _savedComparisonsService = SavedComparisonsService.instance;
+  final SavedComparisonsService _savedComparisonsService =
+      SavedComparisonsService.instance;
   final CarService _carService = CarService();
   List<SavedComparison> _savedComparisons = [];
   List<CarData> _allCars = [];
@@ -59,7 +61,8 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Comparison'),
-        content: const Text('Are you sure you want to delete this saved comparison?'),
+        content: const Text(
+            'Are you sure you want to delete this saved comparison?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -91,7 +94,8 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
     return comparison.carIds
         .map((id) => _allCars.firstWhere(
               (car) => car.id == id,
-              orElse: () => _createDummyCar(id, comparison.carNames, comparison.carIds),
+              orElse: () =>
+                  _createDummyCar(id, comparison.carNames, comparison.carIds),
             ))
         .toList();
   }
@@ -99,8 +103,10 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
   CarData _createDummyCar(String id, List<String> names, List<String> carIds) {
     // Create a minimal car data for cars that might not be in cache
     final nameIndex = carIds.indexOf(id);
-    final name = nameIndex < names.length && nameIndex >= 0 ? names[nameIndex] : 'Unknown Car';
-    
+    final name = nameIndex < names.length && nameIndex >= 0
+        ? names[nameIndex]
+        : 'Unknown Car';
+
     return CarData(
       id: id,
       name: name,
@@ -153,7 +159,8 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
 
                 if (confirmed == true && mounted) {
                   for (var comparison in _savedComparisons) {
-                    await _savedComparisonsService.deleteComparison(comparison.id);
+                    await _savedComparisonsService
+                        .deleteComparison(comparison.id);
                   }
                   _loadData();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -220,8 +227,9 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
                   itemBuilder: (context, index) {
                     final comparison = _savedComparisons[index];
                     final cars = _getCarsForComparison(comparison);
-                    
-                    return _buildComparisonCard(context, theme, comparison, cars);
+
+                    return _buildComparisonCard(
+                        context, theme, comparison, cars);
                   },
                 ),
               ),
@@ -238,8 +246,9 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
     SavedComparison comparison,
     List<CarData> cars,
   ) {
-    final dateFormat = '${comparison.createdAt.day}/${comparison.createdAt.month}/${comparison.createdAt.year}';
-    
+    final dateFormat =
+        '${comparison.createdAt.day}/${comparison.createdAt.month}/${comparison.createdAt.year}';
+
     return Container(
       margin: EdgeInsets.only(bottom: Responsive.scaleHeight(context, 16)),
       decoration: BoxDecoration(
@@ -252,6 +261,8 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
       child: InkWell(
         onTap: () async {
           if (cars.length >= 2) {
+            // Show app open ad before navigation
+            AdService.instance.showAppOpenAd();
             // Show comparison with all cars pre-selected
             await Navigator.push(
               context,
@@ -335,8 +346,10 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
                       vertical: Responsive.scaleHeight(context, 6),
                     ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(Responsive.scaleWidth(context, 12)),
+                      color:
+                          theme.colorScheme.primaryContainer.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(
+                          Responsive.scaleWidth(context, 12)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -375,4 +388,3 @@ class _SavedComparisonsScreenState extends State<SavedComparisonsScreen> {
     );
   }
 }
-

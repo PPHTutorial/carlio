@@ -6,7 +6,7 @@ import '../models/car_data.dart';
 class CarScraper {
   static const String baseUrl = 'https://www.ultimatecarpage.com';
   static const int carsPerPage = 30;
-  static const int maxPages = 67; // 1980 / 30
+  static const int maxPages = 200; // 1980 / 30
 
   final http.Client client;
 

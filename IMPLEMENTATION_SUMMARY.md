@@ -72,10 +72,11 @@
 
 ### In-App Purchase Setup
 1. Create products in Google Play Console / App Store Connect:
-   - `monthly_subscription` - Monthly subscription
-   - `yearly_subscription` - Yearly subscription  
-   - `lifetime_subscription` - Lifetime subscription
-   - `credits_10`, `credits_25`, `credits_50` - Credit packages
+   - `monthly_10` - Monthly subscription
+   - `quarterly_35` - Quarterly subscription  
+   - `halfly_75` - 6-month subscription
+   - `yearly_200` - Yearly subscription
+   - `10credit`, `25credit`, `50credit` - Credit packages
 
 2. Update product IDs in `lib/core/services/purchase_service.dart` if needed
 
@@ -83,9 +84,8 @@
 Add to `android/app/src/main/AndroidManifest.xml`:
 ```xml
 <uses-permission android:name="android.permission.INTERNET"/>
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-<uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+<!-- Note: READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE, and WRITE_EXTERNAL_STORAGE are NOT needed -->
+<!-- The app only saves images (doesn't read them), so no storage permissions required on Android 10+ -->
 <uses-permission android:name="android.permission.SET_WALLPAPER"/>
 ```
 

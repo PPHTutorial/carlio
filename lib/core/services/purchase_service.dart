@@ -12,12 +12,13 @@ class PurchaseService {
   bool _isAvailable = false;
 
   // Product IDs - Replace with your actual product IDs from Play Store/App Store
-  static const String monthlySubId = 'monthly_subscription';
-  static const String yearlySubId = 'yearly_subscription';
-  static const String lifetimeSubId = 'lifetime_subscription';
-  static const String credits10Id = 'credits_10';
-  static const String credits25Id = 'credits_25';
-  static const String credits50Id = 'credits_50';
+  static const String monthlySubId = 'monthly_10';
+  static const String quarterlySubId = 'quarterly_35';
+  static const String halflySubId = 'halfly_75';
+  static const String yearlySubId = 'yearly_200';
+  static const String credits10Id = '10credit';
+  static const String credits25Id = '25credit';
+  static const String credits50Id = '50credit';
 
   static PurchaseService? _instance;
   static PurchaseService get instance {
@@ -31,7 +32,7 @@ class PurchaseService {
 
   Future<void> _initialize() async {
     _isAvailable = await _iap.isAvailable();
-    
+
     if (_isAvailable) {
       _subscription = _iap.purchaseStream.listen(
         _handlePurchaseUpdate,
@@ -56,15 +57,27 @@ class PurchaseService {
 
   Future<void> _verifyAndProcessPurchase(PurchaseDetails purchase) async {
     final productId = purchase.productID;
-    
+
     // Save transaction to Firestore
     await _saveTransactionToFirestore(purchase);
-    
+
     // Handle subscription purchases
     if (productId == monthlySubId) {
       final expiry = DateTime.now().add(const Duration(days: 30));
       await UserService.instance.updateSubscription(
         type: SubscriptionType.monthly,
+        expiry: expiry,
+      );
+    } else if (productId == quarterlySubId) {
+      final expiry = DateTime.now().add(const Duration(days: 90));
+      await UserService.instance.updateSubscription(
+        type: SubscriptionType.quarterly,
+        expiry: expiry,
+      );
+    } else if (productId == halflySubId) {
+      final expiry = DateTime.now().add(const Duration(days: 180));
+      await UserService.instance.updateSubscription(
+        type: SubscriptionType.halfly,
         expiry: expiry,
       );
     } else if (productId == yearlySubId) {
@@ -73,19 +86,14 @@ class PurchaseService {
         type: SubscriptionType.yearly,
         expiry: expiry,
       );
-    } else if (productId == lifetimeSubId) {
-      await UserService.instance.updateSubscription(
-        type: SubscriptionType.lifetime,
-        expiry: null,
-      );
     }
     // Handle credit purchases
     else if (productId == credits10Id) {
-      await UserService.instance.addCredits(17); // 10 + 7 bonus
+      await UserService.instance.addCredits(17.0);
     } else if (productId == credits25Id) {
-      await UserService.instance.addCredits(32); // 25 + 7 bonus
+      await UserService.instance.addCredits(32.0);
     } else if (productId == credits50Id) {
-      await UserService.instance.addCredits(57); // 50 + 7 bonus
+      await UserService.instance.addCredits(57.0);
     }
   }
 
@@ -96,7 +104,8 @@ class PurchaseService {
 
     try {
       final verificationData = <String, dynamic>{
-        'localVerificationData': purchase.verificationData.serverVerificationData,
+        'localVerificationData':
+            purchase.verificationData.serverVerificationData,
         'source': purchase.verificationData.source.toString(),
       };
 
@@ -157,8 +166,9 @@ class PurchaseService {
 
     const productIds = {
       monthlySubId,
+      quarterlySubId,
+      halflySubId,
       yearlySubId,
-      lifetimeSubId,
       credits10Id,
       credits25Id,
       credits50Id,
@@ -169,11 +179,20 @@ class PurchaseService {
   }
 
   Future<bool> buySubscription(String productId) async {
+    return _buyProduct(productId, isConsumable: false);
+  }
+
+  Future<bool> buyConsumableProduct(String productId) async {
+    return _buyProduct(productId, isConsumable: true);
+  }
+
+  Future<bool> _buyProduct(String productId,
+      {required bool isConsumable}) async {
     // Require authentication for purchases
     if (_auth.currentUser == null) {
       throw Exception('Please sign in to make a purchase');
     }
-    
+
     if (!_isAvailable) return false;
 
     final products = await getProducts();
@@ -183,14 +202,15 @@ class PurchaseService {
     );
 
     final purchaseParam = PurchaseParam(productDetails: product);
-    
-    if (productId == monthlySubId || 
-        productId == yearlySubId || 
-        productId == lifetimeSubId) {
-      return await _iap.buyNonConsumable(purchaseParam: purchaseParam);
-    } else {
-      return await _iap.buyConsumable(purchaseParam: purchaseParam);
+
+    if (isConsumable) {
+      return await _iap.buyConsumable(
+        purchaseParam: purchaseParam,
+        autoConsume: true,
+      );
     }
+
+    return await _iap.buyNonConsumable(purchaseParam: purchaseParam);
   }
 
   Future<void> restorePurchases() async {
@@ -202,4 +222,3 @@ class PurchaseService {
     _subscription.cancel();
   }
 }
-

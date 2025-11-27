@@ -11,6 +11,8 @@ import '../../core/widgets/watermarked_image.dart';
 import '../../core/widgets/native_ad_widget.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/user_service.dart';
+import '../../core/services/ad_service.dart';
+import '../../core/services/app_feedback_service.dart';
 import '../../models/car_data.dart';
 import '../car/car_detail_screen.dart';
 import '../account/account_screen.dart';
@@ -54,7 +56,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void didUpdateWidget(DashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Re-randomize when cars list changes or when navigating back to dashboard
-    if (widget.cars != oldWidget.cars || widget.cars.length != oldWidget.cars.length) {
+    if (widget.cars != oldWidget.cars ||
+        widget.cars.length != oldWidget.cars.length) {
       _randomizeRecentCars();
       _initializeHeroCar();
     }
@@ -70,13 +73,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _onScroll() {
     if (!mounted || !_scrollController.hasClients) return;
-    
+
     // Check if hero is scrolled away
     // When SliverAppBar is collapsed, the offset equals expandedHeight - collapsedHeight
     final collapsedHeight = kToolbarHeight;
     final threshold = _heroHeight - collapsedHeight;
     final isHeroScrolledAway = _scrollController.offset >= threshold;
-    
+
     if (_isHeroVisible == isHeroScrolledAway) {
       setState(() {
         _isHeroVisible = !isHeroScrolledAway;
@@ -89,10 +92,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _heroCarTimer?.cancel();
 
     // Get latest loaded cars (last items in the list are most recent)
-    final latestCars = widget.cars.length > 6 
+    final latestCars = widget.cars.length > 6
         ? widget.cars.reversed.take(6).toList().reversed.toList()
         : List<CarData>.from(widget.cars.reversed);
-    
+
     if (latestCars.isEmpty) {
       setState(() {
         _featuredCars = [];
@@ -129,18 +132,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Generate seed based on current time to change selection on each navigation/interaction
     // Using 10-second intervals gives variety while keeping it trackable
     final now = DateTime.now();
-    final seed = now.millisecondsSinceEpoch ~/ (1000 * 10); // Changes every 10 seconds
-    
+    final seed =
+        now.millisecondsSinceEpoch ~/ (1000 * 10); // Changes every 10 seconds
+
     // Always randomize if seed changed or if no cars are selected
     // This ensures fresh selection on each visit
     if (seed != _randomSeed || _recentCars.isEmpty) {
       final random = Random(seed);
       final availableCars = List<CarData>.from(widget.cars);
-      
+
       // Shuffle and take 8 random cars
       availableCars.shuffle(random);
       final selectedCars = availableCars.take(8).toList();
-      
+
       setState(() {
         _recentCars = selectedCars;
         _randomSeed = seed;
@@ -155,16 +159,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // Calculate statistics
     final totalCars = widget.cars.length;
-    final uniqueBrands = widget.cars.map((c) {
-      final parts = c.name.split(' ');
-      return parts.isNotEmpty ? parts.first : '';
-    }).where((b) => b.isNotEmpty).toSet().length;
+    final uniqueBrands = widget.cars
+        .map((c) {
+          final parts = c.name.split(' ');
+          return parts.isNotEmpty ? parts.first : '';
+        })
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .length;
     final totalPhotos = widget.cars.fold<int>(
       0,
       (sum, car) => sum + car.numberOfShots,
     );
     // Get latest loaded cars (last items in the list are most recent)
-    final featuredCars = widget.cars.length > 6 
+    final featuredCars = widget.cars.length > 6
         ? widget.cars.reversed.take(6).toList().reversed.toList()
         : List<CarData>.from(widget.cars.reversed);
 
@@ -172,10 +180,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _heroHeight = Responsive.scaleHeight(context, 380);
 
     // Determine status bar style based on hero visibility
-    final statusBarStyle = _isHeroVisible 
-        ? SystemUiOverlayStyle.light 
-        : (Theme.of(context).brightness == Brightness.dark 
-            ? SystemUiOverlayStyle.light 
+    final statusBarStyle = _isHeroVisible
+        ? SystemUiOverlayStyle.light
+        : (Theme.of(context).brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
             : SystemUiOverlayStyle.dark);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -187,61 +195,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
           physics: const BouncingScrollPhysics(),
           slivers: [
             _buildHeroSection(context, theme, _featuredCars),
-          // Banner ad right below hero
-         const SliverToBoxAdapter(
-            child: const BannerAdWidget(),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              padding.left,
-              padding.top,
-              padding.right,
-              0,
+            // Banner ad right below hero
+            SliverToBoxAdapter(
+              child: SizedBox(height: Responsive.scaleHeight(context, 16)),
             ),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildStatsSection(context, theme, totalCars, uniqueBrands, totalPhotos),
-                if (widget.onLoadMore != null)
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: padding.vertical),
-                    child: Center(
-                      child: ElevatedButton.icon(
-                        onPressed: widget.isLoadingMore ? null : widget.onLoadMore,
-                        icon: widget.isLoadingMore
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    theme.colorScheme.onPrimary,
+            const SliverToBoxAdapter(
+              child: BannerAdWidget(),
+            ),
+            //SizedBox(height: Responsive.scaleHeight(context, 16)),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                padding.left,
+                padding.top,
+                padding.right,
+                0,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _buildStatsSection(
+                      context, theme, totalCars, uniqueBrands, totalPhotos),
+                  if (widget.onLoadMore != null)
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: padding.vertical),
+                      child: Center(
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              widget.isLoadingMore ? null : widget.onLoadMore,
+                          icon: widget.isLoadingMore
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      theme.colorScheme.onPrimary,
+                                    ),
                                   ),
-                                ),
-                              )
-                            : const Icon(Icons.cloud_download_rounded),
-                        label: Text(widget.isLoadingMore ? 'Loading...' : 'Load More Cars'),
+                                )
+                              : const Icon(Icons.cloud_download_rounded),
+                          label: Text(widget.isLoadingMore
+                              ? 'Loading...'
+                              : 'Load More Cars'),
+                        ),
                       ),
                     ),
-                  ),
-                SizedBox(height: Responsive.scaleHeight(context, 4)),
-                if (featuredCars.isNotEmpty)
-                  _buildFeaturedSection(context, theme, featuredCars),
-                SizedBox(height: Responsive.scaleHeight(context, 24)),
-                // Native ad between sections (only for free users)
-                const NativeAdWidget(),
-                SizedBox(height: Responsive.scaleHeight(context, 24)),
-                _buildRecentSection(context, theme, _recentCars),
-                SizedBox(height: Responsive.scaleHeight(context, 32)),
-              ]),
+                  SizedBox(height: Responsive.scaleHeight(context, 4)),
+                  if (featuredCars.isNotEmpty)
+                    _buildFeaturedSection(context, theme, featuredCars),
+                  SizedBox(height: Responsive.scaleHeight(context, 24)),
+                  // Native ad between sections (only for free users)
+                  const NativeAdWidget(),
+                  SizedBox(height: Responsive.scaleHeight(context, 24)),
+                  _buildRecentSection(context, theme, _recentCars),
+                  SizedBox(height: Responsive.scaleHeight(context, 32)),
+                  const NativeAdWidget(),
+                  SizedBox(height: Responsive.scaleHeight(context, 24)),
+                ]),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildHeroSection(BuildContext context, ThemeData theme, List<CarData> featuredCars) {
+  Widget _buildHeroSection(
+      BuildContext context, ThemeData theme, List<CarData> featuredCars) {
     if (featuredCars.isEmpty) {
       return SliverAppBar(
         expandedHeight: Responsive.scaleHeight(context, 200),
@@ -316,10 +335,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final heroCar = featuredCars[currentIndex];
 
     // Determine status bar style: light when hero visible, theme-based when scrolled away
-    final heroStatusBarStyle = _isHeroVisible 
-        ? SystemUiOverlayStyle.light 
-        : (theme.brightness == Brightness.dark 
-            ? SystemUiOverlayStyle.light 
+    final heroStatusBarStyle = _isHeroVisible
+        ? SystemUiOverlayStyle.light
+        : (theme.brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
             : SystemUiOverlayStyle.dark);
 
     return SliverAppBar(
@@ -328,7 +347,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       elevation: 0,
       systemOverlayStyle: heroStatusBarStyle,
       backgroundColor: theme.colorScheme.surface,
-      foregroundColor: _isHeroVisible ? Colors.white : theme.colorScheme.onSurface,
+      foregroundColor:
+          _isHeroVisible ? Colors.white : theme.colorScheme.onSurface,
       title: Text(
         AppConstants.appName,
         style: theme.textTheme.titleLarge?.copyWith(
@@ -343,8 +363,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context, snapshot) {
             final userData = snapshot.data;
             final isPro = userData?.hasValidSubscription ?? false;
-            final iconColor = _isHeroVisible ? Colors.white : theme.colorScheme.onSurface;
-            
+            final iconColor =
+                _isHeroVisible ? Colors.white : theme.colorScheme.onSurface;
+
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -377,12 +398,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Icon(
                               Icons.verified_rounded,
                               size: 14,
-                              color: _isHeroVisible ? Colors.white : Colors.amber,
+                              color:
+                                  _isHeroVisible ? Colors.white : Colors.amber,
                             ),
                           if (isPro)
                             SizedBox(width: Responsive.scaleWidth(context, 4)),
                           Text(
-                            isPro ? 'Pro' : '${userData.credits.toStringAsFixed(1)} Credits',
+                            isPro
+                                ? 'Pro'
+                                : '${userData.credits.toStringAsFixed(1)} Credits',
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                               color: iconColor,
@@ -413,6 +437,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: iconColor,
                   ),
                   onPressed: () {
+                    AdService.instance.showAppOpenAd();
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -420,7 +445,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     );
                   },
-                  tooltip: AuthService().currentUser != null ? 'Account' : 'Sign In',
+                  tooltip:
+                      AuthService().currentUser != null ? 'Account' : 'Sign In',
                 ),
               ],
             );
@@ -428,167 +454,169 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(
-            background: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CarDetailScreen(car: heroCar),
-                  ),
-                );
-              },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Hero image with cropping
-                  if (heroCar.imgs.isNotEmpty)
-                    Positioned.fill(
-                      child: WatermarkedImage(
-                        image: 
-                          CachedNetworkImage(
-                          imageUrl: ImageUtils.getCarLargeImageUrl(
-                            heroCar.id,
-                            heroCar.slug,
-                            heroCar.imgs.first,
-                          ),
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  theme.colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  theme.colorScheme.primary,
-                                  theme.colorScheme.primaryContainer,
-                                ],
-                              ),
+        background: GestureDetector(
+          onTap: () {
+            // Track action
+            AppFeedbackService().trackAction();
+            AdService.instance.showAppOpenAd();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CarDetailScreen(car: heroCar),
+              ),
+            );
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Hero image with cropping
+              if (heroCar.imgs.isNotEmpty)
+                Positioned.fill(
+                  child: WatermarkedImage(
+                    image: CachedNetworkImage(
+                      imageUrl: ImageUtils.getCarLargeImageUrl(
+                        heroCar.id,
+                        heroCar.slug,
+                        heroCar.imgs.first,
+                      ),
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        width: double.infinity,
+                        height: double.infinity,
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              theme.colorScheme.primary,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    
-                  // Gradient overlay
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.0),
-                          Colors.black.withOpacity(0.7),
-                        ],
+                      errorWidget: (context, url, error) => Container(
+                        width: double.infinity,
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              theme.colorScheme.primary,
+                              theme.colorScheme.primaryContainer,
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  // Content
-                  Padding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.of(context).padding.top,
-                      left: Responsive.scaleWidth(context, 16),
-                      right: Responsive.scaleWidth(context, 16),
-                      bottom: Responsive.scaleHeight(context, 16),
-                    ),
-                    child: Column(
+                ),
+
+              // Gradient overlay
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.0),
+                      Colors.black.withOpacity(0.7),
+                    ],
+                  ),
+                ),
+              ),
+              // Content
+              Padding(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top,
+                  left: Responsive.scaleWidth(context, 16),
+                  right: Responsive.scaleWidth(context, 16),
+                  bottom: Responsive.scaleHeight(context, 16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Featured car details at bottom
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                          // Featured car details at bottom
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: Responsive.scaleWidth(context, 12),
-                                  vertical: Responsive.scaleHeight(context, 6),
-                                ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(
-                                    Responsive.scaleWidth(context, 20),
-                                  ),
-                                ),
-                                child: Text(
-                                  'Featured',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: theme.colorScheme.onPrimary,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: Responsive.scaleWidth(context, 12),
+                            vertical: Responsive.scaleHeight(context, 6),
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(
+                              Responsive.scaleWidth(context, 20),
+                            ),
+                          ),
+                          child: Text(
+                            'Featured',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.colorScheme.onPrimary,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: Responsive.scaleHeight(context, 12)),
+                        Text(
+                          heroCar.name,
+                          style: theme.textTheme.headlineLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.5),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
                               ),
-                              SizedBox(height: Responsive.scaleHeight(context, 12)),
-                              Text(
-                                heroCar.name,
-                                style: theme.textTheme.headlineLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black.withOpacity(0.5),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              SizedBox(height: Responsive.scaleHeight(context, 8)),
-                              Row(
-                                children: [
-                                  if (heroCar.data.countryOfOrigin != null)
-                                    _buildHeroBadge(
-                                      context,
-                                      theme,
-                                      Icons.place,
-                                      heroCar.data.countryOfOrigin!,
-                                    ),
-                                  SizedBox(width: Responsive.scaleWidth(context, 12)),
-                                  if (heroCar.producedIn > 0)
-                                    _buildHeroBadge(
-                                      context,
-                                      theme,
-                                      Icons.calendar_today,
-                                      heroCar.producedIn.toString(),
-                                    ),
-                                  SizedBox(width: Responsive.scaleWidth(context, 12)),
-                                  _buildHeroBadge(
-                                    context,
-                                    theme,
-                                    Icons.photo_library,
-                                    '${heroCar.numberOfShots}',
-                                  ),
-                                ],
-                              ),
-                              
                             ],
                           ),
-                          SizedBox(height: Responsive.scaleHeight(context, 50)),
-                        ],
-                      ),
+                        ),
+                        SizedBox(height: Responsive.scaleHeight(context, 8)),
+                        Row(
+                          children: [
+                            if (heroCar.data.countryOfOrigin != null)
+                              _buildHeroBadge(
+                                context,
+                                theme,
+                                Icons.place,
+                                heroCar.data.countryOfOrigin!,
+                              ),
+                            SizedBox(width: Responsive.scaleWidth(context, 12)),
+                            if (heroCar.producedIn > 0)
+                              _buildHeroBadge(
+                                context,
+                                theme,
+                                Icons.calendar_today,
+                                heroCar.producedIn.toString(),
+                              ),
+                            SizedBox(width: Responsive.scaleWidth(context, 12)),
+                            _buildHeroBadge(
+                              context,
+                              theme,
+                              Icons.photo_library,
+                              '${heroCar.numberOfShots}',
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
+                    SizedBox(height: Responsive.scaleHeight(context, 50)),
                   ],
                 ),
               ),
-            ),
-          );
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  Widget _buildHeroBadge(BuildContext context, ThemeData theme, IconData icon, String label) {
+  Widget _buildHeroBadge(
+      BuildContext context, ThemeData theme, IconData icon, String label) {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: Responsive.scaleWidth(context, 10),
@@ -605,7 +633,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: Responsive.fontSize(context, 14), color: Colors.white),
+          Icon(icon,
+              size: Responsive.fontSize(context, 14), color: Colors.white),
           SizedBox(width: Responsive.scaleWidth(context, 6)),
           Text(
             label,
@@ -645,7 +674,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 label: 'Total Cars',
                 value: totalCars.toString(),
                 iconColor: theme.colorScheme.primary,
-                iconBackgroundColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                iconBackgroundColor:
+                    theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
               ),
             ),
             SizedBox(width: Responsive.scaleWidth(context, 12)),
@@ -655,7 +685,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 label: 'Brands',
                 value: uniqueBrands.toString(),
                 iconColor: theme.colorScheme.secondary,
-                iconBackgroundColor: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
+                iconBackgroundColor:
+                    theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
               ),
             ),
             SizedBox(width: Responsive.scaleWidth(context, 12)),
@@ -665,7 +696,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 label: 'Photos',
                 value: totalPhotos.toString(),
                 iconColor: theme.colorScheme.tertiary,
-                iconBackgroundColor: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+                iconBackgroundColor:
+                    theme.colorScheme.tertiaryContainer.withValues(alpha: 0.3),
               ),
             ),
           ],
@@ -674,7 +706,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildFeaturedSection(BuildContext context, ThemeData theme, List<CarData> featuredCars) {
+  Widget _buildFeaturedSection(
+      BuildContext context, ThemeData theme, List<CarData> featuredCars) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -733,7 +766,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildRecentSection(BuildContext context, ThemeData theme, List<CarData> recentCars) {
+  Widget _buildRecentSection(
+      BuildContext context, ThemeData theme, List<CarData> recentCars) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -744,7 +778,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             letterSpacing: -0.5,
           ),
         ),
-        SizedBox(height: Responsive.scaleHeight(context, 20)),
+        SizedBox(height: Responsive.scaleHeight(context, 8)),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -815,7 +849,8 @@ class _PremiumStatCard extends StatelessWidget {
               height: 48,
               decoration: BoxDecoration(
                 color: iconBackgroundColor,
-                borderRadius: BorderRadius.circular(Responsive.scaleWidth(context, 12)),
+                borderRadius:
+                    BorderRadius.circular(Responsive.scaleWidth(context, 12)),
                 boxShadow: [
                   BoxShadow(
                     color: iconColor.withValues(alpha: 0.2),
@@ -881,7 +916,8 @@ class _PremiumCarCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(Responsive.scaleWidth(context, 12)),
+            borderRadius:
+                BorderRadius.circular(Responsive.scaleWidth(context, 12)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.08),
@@ -891,7 +927,8 @@ class _PremiumCarCard extends StatelessWidget {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(Responsive.scaleWidth(context, 12)),
+            borderRadius:
+                BorderRadius.circular(Responsive.scaleWidth(context, 12)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -903,7 +940,7 @@ class _PremiumCarCard extends StatelessWidget {
                       car.imgs.isNotEmpty
                           ? SizedBox.expand(
                               child: ImageUtils.cropImageEdges(
-                                  CachedNetworkImage(
+                                CachedNetworkImage(
                                   imageUrl: ImageUtils.getCarLargeImageUrl(
                                     car.id,
                                     car.slug,
@@ -913,17 +950,20 @@ class _PremiumCarCard extends StatelessWidget {
                                   placeholder: (context, url) => Container(
                                     width: double.infinity,
                                     height: double.infinity,
-                                    color: theme.colorScheme.surfaceContainerHighest,
+                                    color: theme
+                                        .colorScheme.surfaceContainerHighest,
                                     child: Center(
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
                                           theme.colorScheme.primary,
                                         ),
                                       ),
                                     ),
                                   ),
-                                  errorWidget: (context, url, error) => Container(
+                                  errorWidget: (context, url, error) =>
+                                      Container(
                                     width: double.infinity,
                                     height: double.infinity,
                                     decoration: BoxDecoration(
@@ -931,8 +971,10 @@ class _PremiumCarCard extends StatelessWidget {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          theme.colorScheme.primary.withOpacity(0.3),
-                                          theme.colorScheme.primaryContainer.withOpacity(0.3),
+                                          theme.colorScheme.primary
+                                              .withOpacity(0.3),
+                                          theme.colorScheme.primaryContainer
+                                              .withOpacity(0.3),
                                         ],
                                       ),
                                     ),
@@ -944,7 +986,6 @@ class _PremiumCarCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                            
                             )
                           : Container(
                               decoration: BoxDecoration(
@@ -953,7 +994,8 @@ class _PremiumCarCard extends StatelessWidget {
                                   end: Alignment.bottomRight,
                                   colors: [
                                     theme.colorScheme.primary.withOpacity(0.2),
-                                    theme.colorScheme.primaryContainer.withOpacity(0.2),
+                                    theme.colorScheme.primaryContainer
+                                        .withOpacity(0.2),
                                   ],
                                 ),
                               ),
@@ -1033,7 +1075,8 @@ class _PremiumCarCard extends StatelessWidget {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                                    color: theme.colorScheme.primary
+                                        .withValues(alpha: 0.4),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   ),
@@ -1047,7 +1090,8 @@ class _PremiumCarCard extends StatelessWidget {
                                     size: Responsive.fontSize(context, 14),
                                     color: Colors.white,
                                   ),
-                                  SizedBox(width: Responsive.scaleWidth(context, 4)),
+                                  SizedBox(
+                                      width: Responsive.scaleWidth(context, 4)),
                                   Text(
                                     'Featured',
                                     style: theme.textTheme.labelSmall?.copyWith(
@@ -1084,7 +1128,8 @@ class _PremiumCarCard extends StatelessWidget {
                                 size: Responsive.fontSize(context, 14),
                                 color: Colors.white,
                               ),
-                              SizedBox(width: Responsive.scaleWidth(context, 4)),
+                              SizedBox(
+                                  width: Responsive.scaleWidth(context, 4)),
                               Text(
                                 '${car.numberOfShots}',
                                 style: theme.textTheme.labelSmall?.copyWith(
@@ -1107,7 +1152,8 @@ class _PremiumCarCard extends StatelessWidget {
                               vertical: Responsive.scaleHeight(context, 5),
                             ),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.secondary.withOpacity(0.6),
+                              color:
+                                  theme.colorScheme.secondary.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(
                                 Responsive.scaleWidth(context, 16),
                               ),

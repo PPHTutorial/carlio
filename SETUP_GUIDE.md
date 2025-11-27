@@ -137,14 +137,15 @@ Edit `ios/Runner/Info.plist`:
 ### Android (Google Play Console)
 1. Go to: Monetize → Products → Subscriptions
 2. Create subscriptions:
-   - `monthly_subscription` - Monthly, $55
-   - `yearly_subscription` - Yearly, $250
-   - `lifetime_subscription` - Lifetime, $1000
+   - `monthly_10` - $10 monthly
+   - `quarterly_35` - $35 every quarter
+   - `halfly_75` - $75 every 6 months
+   - `yearly_200` - $200 yearly
 3. Go to: Monetize → Products → In-app products
 4. Create products:
-   - `credits_10` - One-time purchase
-   - `credits_25` - One-time purchase
-   - `credits_50` - One-time purchase
+   - `10credit` - One-time purchase (10 credits + bonus)
+   - `25credit` - One-time purchase (25 credits + bonus)
+   - `50credit` - One-time purchase (50 credits + bonus)
 
 ### iOS (App Store Connect)
 1. Go to: My Apps → [Your App] → Features → In-App Purchases

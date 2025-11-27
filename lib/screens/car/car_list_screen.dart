@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/utils/responsive.dart';
 import '../../core/utils/image_utils.dart';
+import '../../core/widgets/banner_ad_widget.dart';
+import '../../core/widgets/native_ad_widget.dart';
 import '../../models/car_data.dart';
 
 class CarListScreen extends StatefulWidget {
@@ -68,36 +70,88 @@ class _CarListScreenState extends State<CarListScreen> {
     });
   }
 
+  // Calculate number of sections (each section has 6 cars + 1 ad)
+  int get _sectionCount {
+    return ((widget.cars.length - 1) / 6).floor() + 1;
+  }
+
+  // Get cars for a specific section
+  List<CarData> _getCarsForSection(int sectionIndex) {
+    final startIndex = sectionIndex * 6;
+    final endIndex = (startIndex + 6).clamp(0, widget.cars.length);
+    return widget.cars.sublist(startIndex, endIndex);
+  }
+
   @override
   Widget build(BuildContext context) {
     final crossAxisCount = Responsive.crossAxisCount(context);
     final spacing = Responsive.scaleWidth(context, 20);
 
-    return GridView.builder(
+    return CustomScrollView(
       controller: _scrollController,
-      padding: EdgeInsets.all(spacing),
       physics: const BouncingScrollPhysics(),
-      // Optimize for performance
-      cacheExtent: 500, // Cache 500 pixels of off-screen widgets
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: spacing,
-        mainAxisSpacing: spacing,
-        childAspectRatio: 0.68,
-      ),
-      itemCount: widget.cars.length,
-      itemBuilder: (context, index) {
-        // Preload images for next few items
-        _preloadNextImages(index);
+      cacheExtent: 500,
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.all(spacing),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, sectionIndex) {
+                final carsInSection = _getCarsForSection(sectionIndex);
 
-        return RepaintBoundary(
-          child: _PremiumCarCard(
-            key: ValueKey(widget.cars[index].id),
-            car: widget.cars[index],
-            onTap: () => widget.onCarTap(widget.cars[index]),
+                return Column(
+                  children: [
+                    // Car grid (2 rows of 3 = 6 cars)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final itemWidth = (constraints.maxWidth -
+                                (spacing * (crossAxisCount - 1))) /
+                            crossAxisCount;
+                        final itemHeight = itemWidth / 0.68;
+
+                        return Wrap(
+                          spacing: spacing,
+                          runSpacing: spacing,
+                          children: carsInSection.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final car = entry.value;
+                            final globalIndex = sectionIndex * 6 + index;
+
+                            // Preload images for next few items
+                            _preloadNextImages(globalIndex);
+
+                            return SizedBox(
+                              width: itemWidth,
+                              height: itemHeight,
+                              child: RepaintBoundary(
+                                child: _PremiumCarCard(
+                                  key: ValueKey(car.id),
+                                  car: car,
+                                  onTap: () => widget.onCarTap(car),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                    // Ad after every 6 cars (full width banner or native)
+                    if (sectionIndex < _sectionCount - 1 ||
+                        carsInSection.length == 6)
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: spacing),
+                        child: sectionIndex % 2 == 0
+                            ? const BannerAdWidget() // Banner ad spans full width
+                            : const NativeAdWidget(), // Native ad
+                      ),
+                  ],
+                );
+              },
+              childCount: _sectionCount,
+            ),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
